@@ -2,7 +2,10 @@ import random
 from libs.utils import point_distance, direction_of_travel
 from modules.character import Character
 from modules.sound import sound
+from libs.random_generators.LinearCongruentialGenerator import LinearCongruentialGenerator
 
+
+rng = LinearCongruentialGenerator()
 DEATH_ANIMATION_SECONDS = 0.6
 RANDOM_FLIGHT_DELTA = 300
 
@@ -56,8 +59,10 @@ class Duck(Character):
         speed = opts.get('speed', 1)
 
         while True:
-            dest_x = random.randint(min_x, max_x)
-            dest_y = random.randint(min_y, max_y)
+            #dest_x = random.randint(min_x, max_x)
+            dest_x = rng.randint(min_x, max_x)
+            #dest_y = random.randint(min_y, max_y)
+            dest_y = rng.randint(min_y, max_y)
             dist = point_distance((self.x, self.y), (dest_x, dest_y))
             if dist >= random_flight_delta:
                 break
