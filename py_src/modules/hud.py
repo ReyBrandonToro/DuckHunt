@@ -1,6 +1,10 @@
 import pygame
 from libs.assets import Assets
 
+
+def _clamp(value, min_value, max_value):
+    return max(min_value, min(max_value, value))
+
 class TextBox:
     def __init__(self, text, style, location, anchor):
         self.text = text
@@ -23,20 +27,32 @@ class TextBox:
         surface.blit(text_surface, (x, y))
 
 class TextureCounter:
-    def __init__(self, texture_key, location, max_val, row_max):
+    def __init__(self, texture_key, location, max_val, row_max, icon_scale=1.0):
         self.texture_key = texture_key
         self.location = location
         self.max_val = max_val
         self.row_max = row_max
+        self.icon_scale = icon_scale
         self.value = 0
         self.texture = Assets.get_texture(texture_key)
+
+    def _get_draw_texture(self):
+        if not self.texture:
+            return None
+        if self.icon_scale == 1.0:
+            return self.texture
+
+        width = max(1, int(self.texture.get_width() * self.icon_scale))
+        height = max(1, int(self.texture.get_height() * self.icon_scale))
+        return pygame.transform.smoothscale(self.texture, (width, height))
         
     def draw(self, surface, scale_x=1.0, scale_y=1.0):
-        if not self.texture: return
+        draw_texture = self._get_draw_texture()
+        if not draw_texture: return
         val = min(self.value, self.max_val) if self.max_val else self.value
         
-        width = self.texture.get_width()
-        height = self.texture.get_height()
+        width = draw_texture.get_width()
+        height = draw_texture.get_height()
         
         for i in range(val):
             y_pos = 0
@@ -48,12 +64,224 @@ class TextureCounter:
             x = int((self.location[0] + width * x_pos_delta) * scale_x)
             y = int((self.location[1] + y_pos) * scale_y)
             
-            surface.blit(self.texture, (x, y))
+            surface.blit(draw_texture, (x, y))
+
+class LivesCounter:
+    def __init__(self, full_texture_key, empty_texture_key, location, max_val, icon_scale=1.0):
+        self.full_texture = Assets.get_texture(full_texture_key)
+        self.empty_texture = Assets.get_texture(empty_texture_key)
+        self.location = location
+        self.max_val = max_val
+        self.icon_scale = icon_scale
+        self._value = 0
+        self._loss_animation_index = None
+        self._loss_animation_start_ms = 0
+        self._loss_animation_duration_ms = 240
+
+    def _scale_texture(self, texture):
+        if not texture:
+            return None
+        if self.icon_scale == 1.0:
+            return texture
+
+        width = max(1, int(texture.get_width() * self.icon_scale))
+        height = max(1, int(texture.get_height() * self.icon_scale))
+        return pygame.transform.smoothscale(texture, (width, height))
+
+    @property
+    def value(self):
+        return self._value
+
+    @value.setter
+    def value(self, new_value):
+        old_value = self._value
+        self._value = new_value
+
+        if new_value < old_value:
+            self._loss_animation_index = max(0, old_value - 1)
+            self._loss_animation_start_ms = pygame.time.get_ticks()
+
+    def _draw_loss_animation(self, surface, full_texture, icon_x, icon_y):
+        if self._loss_animation_index is None:
+            return
+
+        elapsed_ms = pygame.time.get_ticks() - self._loss_animation_start_ms
+        if elapsed_ms >= self._loss_animation_duration_ms:
+            self._loss_animation_index = None
+            return
+
+        progress = elapsed_ms / self._loss_animation_duration_ms
+        pulse = 1.0 + (0.22 * progress)
+        alpha = max(0, int(255 * (1.0 - progress)))
+
+        anim_width = max(1, int(full_texture.get_width() * pulse))
+        anim_height = max(1, int(full_texture.get_height() * pulse))
+        anim_texture = pygame.transform.smoothscale(full_texture, (anim_width, anim_height))
+        anim_texture.set_alpha(alpha)
+
+        offset_x = int((anim_width - full_texture.get_width()) / 2)
+        offset_y = int((anim_height - full_texture.get_height()) / 2)
+        surface.blit(anim_texture, (icon_x - offset_x, icon_y - offset_y))
+
+    def draw(self, surface, scale_x=1.0, scale_y=1.0):
+        full_texture = self._scale_texture(self.full_texture)
+        empty_texture = self._scale_texture(self.empty_texture)
+
+        draw_texture = full_texture if full_texture else empty_texture
+        if not draw_texture:
+            return
+
+        max_lives = max(0, self.max_val)
+        current_lives = max(0, min(self.value, max_lives))
+        icon_width = draw_texture.get_width()
+
+        for i in range(max_lives):
+            x = int((self.location[0] + icon_width * i) * scale_x)
+            y = int(self.location[1] * scale_y)
+
+            if empty_texture:
+                surface.blit(empty_texture, (x, y))
+
+            if i < current_lives and full_texture:
+                surface.blit(full_texture, (x, y))
+
+            if full_texture and i == self._loss_animation_index:
+                self._draw_loss_animation(surface, full_texture, x, y)
+
+
+class WaveProgressPanel:
+    def __init__(self):
+        self.game = None
+        self.wave_font = pygame.font.SysFont('arial', 18)
+        self.ducks_font = pygame.font.SysFont('arial', 15)
+        self.message_font = pygame.font.SysFont('arial', 24)
+
+        self.panel_width = 280
+        self.panel_height = 84
+        self.panel_margin_top = 8
+        self.corner_radius = 8
+
+        self.border_color = (255, 255, 255)
+        self.wave_color = (255, 255, 255)
+        self.ducks_color = (235, 235, 235)
+        self.bar_bg_color = (40, 40, 40)
+        self.bar_fill_color = (38, 184, 78)
+        self.percent_color = (255, 255, 255)
+        self.message_color = (255, 232, 120)
+
+        self.message_text = ''
+        self.message_until_ms = 0
+        self.message_duration_ms = 2000
+
+        self._initialized = False
+        self._last_wave = 0
+        self._last_level_index = 0
+
+    def bind_game(self, game):
+        self.game = game
+        self._initialized = False
+
+    def _read_progress(self):
+        if not self.game:
+            return None
+
+        level = getattr(self.game, 'level', None) or {}
+        wave = max(0, int(getattr(self.game, 'wave', 0) or 0))
+        total_waves = max(0, int(level.get('waves', 0) or 0))
+        ducks_hit = max(0, int(getattr(self.game, 'ducks_shot_this_wave', 0) or 0))
+        ducks_total = max(0, int(level.get('ducks', 0) or 0))
+        level_index = int(getattr(self.game, 'level_index', 0) or 0)
+
+        return {
+            'wave': wave,
+            'total_waves': total_waves,
+            'ducks_hit': ducks_hit,
+            'ducks_total': ducks_total,
+            'level_index': level_index,
+        }
+
+    def _update_message(self, progress):
+        now_ms = pygame.time.get_ticks()
+
+        if not self._initialized:
+            self._last_wave = progress['wave']
+            self._last_level_index = progress['level_index']
+            self._initialized = True
+            return
+
+        if progress['level_index'] > self._last_level_index:
+            self.message_text = 'Level Complete!'
+            self.message_until_ms = now_ms + self.message_duration_ms
+        elif progress['wave'] > self._last_wave and self._last_wave > 0:
+            self.message_text = 'Wave Complete!'
+            self.message_until_ms = now_ms + self.message_duration_ms
+
+        self._last_wave = progress['wave']
+        self._last_level_index = progress['level_index']
+
+    def draw(self, surface, scale_x=1.0, scale_y=1.0):
+        progress = self._read_progress()
+        if not progress:
+            return
+
+        self._update_message(progress)
+
+        wave_text = f"Wave {progress['wave']} / {progress['total_waves']}"
+        ducks_text = f"Ducks: {progress['ducks_hit']} / {progress['ducks_total']}"
+
+        ratio = 0.0
+        if progress['ducks_total'] > 0:
+            ratio = _clamp(progress['ducks_hit'] / progress['ducks_total'], 0.0, 1.0)
+        percent = int(round(ratio * 100))
+
+        wave_surface = self.wave_font.render(wave_text, True, self.wave_color)
+        ducks_surface = self.ducks_font.render(ducks_text, True, self.ducks_color)
+        percent_surface = self.ducks_font.render(f"{percent}%", True, self.percent_color)
+
+        center_x = int(400 * scale_x)
+        panel_width = max(1, int(self.panel_width * scale_x))
+        panel_height = max(1, int(self.panel_height * scale_y))
+        panel_x = center_x - (panel_width // 2)
+        panel_y = int(self.panel_margin_top * scale_y)
+
+        wave_rect = wave_surface.get_rect(center=(center_x, panel_y + int(18 * scale_y)))
+        ducks_rect = ducks_surface.get_rect(center=(center_x, panel_y + int(40 * scale_y)))
+        surface.blit(wave_surface, wave_rect)
+        surface.blit(ducks_surface, ducks_rect)
+
+        bar_width = max(1, int(190 * scale_x))
+        bar_height = max(1, int(14 * scale_y))
+        bar_x = center_x - (bar_width // 2)
+        bar_y = panel_y + int(58 * scale_y)
+
+        bg_rect = pygame.Rect(bar_x, bar_y, bar_width, bar_height)
+        fill_width = int((bar_width - 2) * ratio)
+        fill_rect = pygame.Rect(bar_x + 1, bar_y + 1, max(0, fill_width), max(1, bar_height - 2))
+
+        pygame.draw.rect(surface, self.bar_bg_color, bg_rect, border_radius=4)
+        if fill_rect.width > 0:
+            pygame.draw.rect(surface, self.bar_fill_color, fill_rect, border_radius=4)
+        pygame.draw.rect(surface, self.border_color, bg_rect, width=1, border_radius=4)
+
+        percent_rect = percent_surface.get_rect(midleft=(bar_x + bar_width + int(8 * scale_x), bar_y + (bar_height // 2)))
+        surface.blit(percent_surface, percent_rect)
+
+        now_ms = pygame.time.get_ticks()
+        if self.message_text and now_ms <= self.message_until_ms:
+            message_surface = self.message_font.render(self.message_text, True, self.message_color)
+            message_rect = message_surface.get_rect(center=(center_x, panel_y + panel_height + int(18 * scale_y)))
+            surface.blit(message_surface, message_rect)
 
 class Hud:
     def __init__(self):
         self._items = {}
         self._values = {}
+        self._game = None
+        self._wave_progress_panel = WaveProgressPanel()
+
+    def bind_game(self, game):
+        self._game = game
+        self._wave_progress_panel.bind_game(game)
 
     def create_text_box(self, name, opts=None):
         if opts is None: opts = {}
@@ -67,11 +295,16 @@ class Hud:
     def create_texture_based_counter(self, name, opts=None):
         if opts is None: opts = {}
         texture = opts.get('texture', '')
+        empty_texture = opts.get('emptyTexture', None)
         location = opts.get('location', (0, 0))
         max_val = opts.get('max', None)
         row_max = opts.get('rowMax', None)
+        icon_scale = opts.get('iconScale', 1.0)
         
-        self._items[name] = TextureCounter(texture, location, max_val, row_max)
+        if empty_texture:
+            self._items[name] = LivesCounter(texture, empty_texture, location, max_val, icon_scale)
+        else:
+            self._items[name] = TextureCounter(texture, location, max_val, row_max, icon_scale)
         self._values[name] = 0
 
     def __getattr__(self, name):
@@ -80,13 +313,13 @@ class Hud:
         raise AttributeError(f"'Hud' object has no attribute '{name}'")
 
     def __setattr__(self, name, value):
-        if name in ['_items', '_values']:
+        if name in ['_items', '_values', '_game', '_wave_progress_panel']:
             super().__setattr__(name, value)
         elif hasattr(self, '_items') and name in self._items:
             self._values[name] = value
             if isinstance(self._items[name], TextBox):
                 self._items[name].text = str(value)
-            elif isinstance(self._items[name], TextureCounter):
+            elif isinstance(self._items[name], (TextureCounter, LivesCounter)):
                 self._items[name].value = value
         else:
             super().__setattr__(name, value)
@@ -94,3 +327,6 @@ class Hud:
     def draw(self, surface, scale_x=1.0, scale_y=1.0):
         for item in self._items.values():
             item.draw(surface, scale_x, scale_y)
+        game = getattr(self, '_game', None)
+        if game is not None and getattr(game, 'state', None) == 'PLAYING':
+            self._wave_progress_panel.draw(surface, scale_x, scale_y)

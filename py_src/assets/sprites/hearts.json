@@ -1,0 +1,28 @@
+{
+  "frames": {
+    "hud/hearts/full.png": {
+      "frame": {"x": 77, "y": 45, "w": 254, "h": 238},
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {"x": 0, "y": 0, "w": 254, "h": 238},
+      "sourceSize": {"w": 254, "h": 238},
+      "pivot": {"x": 0.5, "y": 0.5}
+    },
+    "hud/hearts/empty.png": {
+      "frame": {"x": 448, "y": 45, "w": 254, "h": 237},
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {"x": 0, "y": 0, "w": 254, "h": 237},
+      "sourceSize": {"w": 254, "h": 237},
+      "pivot": {"x": 0.5, "y": 0.5}
+    }
+  },
+  "meta": {
+    "app": "manual",
+    "version": "1.0",
+    "image": "hearts.png",
+    "format": "RGBA8888",
+    "size": {"w": 773, "h": 323},
+    "scale": "1"
+  }
+}

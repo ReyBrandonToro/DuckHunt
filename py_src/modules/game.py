@@ -1,6 +1,7 @@
 import pygame
 import time
 import json
+import os
 from modules.stage import Stage
 from modules.sound import sound
 
@@ -8,28 +9,55 @@ BLUE_SKY_COLOR = (100, 176, 255)
 PINK_SKY_COLOR = (251, 180, 212)
 SUCCESS_RATIO = 0.6
 BOTTOM_LINK_STYLE = {'fontFamily': 'Arial', 'fontSize': '15px', 'fill': 'white'}
+DIFFICULTY_ORDER = ('easy', 'normal', 'hard')
+MAX_LIVES = 3
+DEFAULT_CREDITS = 5
+CREDITS_RECHARGE_AMOUNT = 5
+MAX_HIGH_SCORES = 10
+DEFAULT_PLAYER_NAME = 'Player'
+
+STATE_MENU = 'MENU'
+STATE_PLAYING = 'PLAYING'
+STATE_GAME_OVER = 'GAME_OVER'
+STATE_RANKING = 'RANKING'
+STATE_READY = 'READY'
+STATE_WIN = 'WIN'
+STATE_LOSS = 'LOSS'
 
 class Game:
     def __init__(self, opts):
         self.spritesheet = opts.get('spritesheet')
+        self.difficulty = opts.get('difficulty', 'normal')
         self.level_index = 0
         self.max_score = 0
         self.time_paused = 0
         self.is_muted = False
         self.is_paused = False
         self.active_sounds = []
+        self.state = STATE_MENU
+        self.is_game_over = False
+        self.player_name = DEFAULT_PLAYER_NAME
+        self._player_name_input = ''
+        self.high_scores = []
+        self._menu_text_font = None
+        self._menu_title_font = None
+        self._panel_surface = None
 
         self.wave_ending = False
         self.quacking_sound_id = None
-        
-        with open('data/levels.json', 'r') as f:
-            levels_data = json.load(f)
-        self.levels = levels_data['normal']
+
+        self.high_scores_path = self._data_file_path('highscores.json')
+
+        with open(self._data_file_path('levels.json'), 'r') as f:
+            self.levels_data = json.load(f)
+        self.set_difficulty(self.difficulty)
+        self.high_scores = self.load_high_scores()
         
         self.ducks_missed_val = 0
         self.ducks_shot_val = 0
         self.bullet_val = 0
         self.score_val = 0
+        self.lives_val = 3
         self.wave_val = 0
         self.game_status_val = ""
         self.level = None
@@ -39,6 +67,280 @@ class Game:
         self.ducks_shot_this_wave = 0
         self.is_fullscreen = False
         self.bg_color = BLUE_SKY_COLOR
+        self.lives = MAX_LIVES
+        self.credits_val = DEFAULT_CREDITS
+        self.demo_mode_val = False
+
+    @property
+    def credits(self):
+        return self.credits_val
+
+    @credits.setter
+    def credits(self, val):
+        self.credits_val = max(0, int(val or 0))
+        self._refresh_credits_display()
+
+    @property
+    def demo_mode(self):
+        return self.demo_mode_val
+
+    @demo_mode.setter
+    def demo_mode(self, enabled):
+        self.demo_mode_val = bool(enabled)
+        self._refresh_credits_display()
+
+    def _data_file_path(self, filename):
+        base_dir = os.path.dirname(os.path.dirname(__file__))
+        return os.path.join(base_dir, 'data', filename)
+
+    def _sanitize_player_name(self, name):
+        clean_name = (name or '').strip()
+        return clean_name if clean_name else DEFAULT_PLAYER_NAME
+
+    def _initialize_ui_fonts(self):
+        if self._menu_title_font is None:
+            self._menu_title_font = pygame.font.SysFont('arial', 40, bold=True)
+        if self._menu_text_font is None:
+            self._menu_text_font = pygame.font.SysFont('arial', 24)
+
+    def _make_panel_surface(self, width, height):
+        panel = pygame.Surface((width, height), pygame.SRCALPHA)
+        panel.fill((20, 30, 45, 170))
+        return panel
+
+    def _prepare_menu(self):
+        self.state = STATE_MENU
+        self.is_paused = False
+        self.time_paused = 0
+        self._player_name_input = self.player_name if self.player_name != DEFAULT_PLAYER_NAME else ''
+        self._clear_game_over_prompt()
+        self._refresh_credits_display()
+
+    def _start_gameplay_from_menu(self):
+        self.player_name = self._sanitize_player_name(self._player_name_input)
+        self._player_name_input = self.player_name
+        self.reset_game_state(preserve_stage=True)
+        self.add_fullscreen_link()
+        self.add_mute_link()
+        self.add_pause_link()
+        self.add_link_to_level_creator()
+        self.lives = MAX_LIVES
+        self._clear_game_over_prompt()
+        self.start_level()
+
+    def _credits_text(self):
+        return 'Credits: \u221e' if self.demo_mode else f'Credits: {self.credits}'
+
+    def _refresh_credits_display(self):
+        if not self.stage or not self.stage.hud:
+            return
+
+        if 'credits' not in self.stage.hud._items:
+            self.stage.hud.create_text_box('credits', {
+                'style': {'fontFamily': 'Arial', 'fontSize': '18px', 'fill': 'white'},
+                'location': Stage.credits_box_location(),
+                'anchor': (0, 0)
+            })
+        self.stage.hud.credits = self._credits_text()
+
+    def _set_game_over_prompt(self, text):
+        if not self.stage or not self.stage.hud:
+            return
+
+        if 'continuePrompt' not in self.stage.hud._items:
+            self.stage.hud.create_text_box('continuePrompt', {
+                'style': {'fontFamily': 'Arial', 'fontSize': '22px', 'fill': 'white'},
+                'location': Stage.game_over_prompt_location(),
+                'anchor': (0.5, 0.5)
+            })
+        self.stage.hud.continuePrompt = text
+
+    def _clear_game_over_prompt(self):
+        if not self.stage or not self.stage.hud:
+            return
+        if 'continuePrompt' in self.stage.hud._items:
+            self.stage.hud.continuePrompt = ''
+
+    def add_credits(self, amount=CREDITS_RECHARGE_AMOUNT):
+        self.credits = self.credits + max(0, int(amount or 0))
+
+    def toggle_demo_mode(self):
+        self.demo_mode = not self.demo_mode
+
+    def can_continue_after_game_over(self):
+        return self.demo_mode or self.credits > 0
+
+    def _consume_continue_credit(self):
+        if self.demo_mode:
+            return True
+        if self.credits <= 0:
+            return False
+        self.credits -= 1
+        return True
+
+    def continue_after_game_over(self):
+        if not self._consume_continue_credit():
+            self.finish_run_and_return_to_menu()
+            return
+
+        self.is_game_over = False
+        self.lives = MAX_LIVES
+        self.wave = 0
+        self.wave_ending = False
+        self.bg_color = BLUE_SKY_COLOR
+        self._clear_game_over_prompt()
+        if self.stage:
+            self.stage.clean_up_ducks()
+        self.start_level()
+
+    def finish_run_and_return_to_menu(self):
+        self.update_high_scores(self.player_name, self.score)
+        self._prepare_menu()
+
+    def _high_score_lines(self):
+        if not self.high_scores:
+            return ['No scores yet.']
+
+        lines = []
+        for entry in self.high_scores[:MAX_HIGH_SCORES]:
+            name = self._sanitize_player_name(entry.get('name', DEFAULT_PLAYER_NAME))
+            score = int(entry.get('score', 0) or 0)
+            lines.append(f"{name} - {score}")
+        return lines
+
+    def _is_valid_score_entry(self, entry):
+        if not isinstance(entry, dict):
+            return False
+        if 'name' not in entry or 'score' not in entry:
+            return False
+        try:
+            int(entry.get('score', 0))
+        except (TypeError, ValueError):
+            return False
+        return True
+
+    def load_high_scores(self):
+        os.makedirs(os.path.dirname(self.high_scores_path), exist_ok=True)
+
+        if not os.path.exists(self.high_scores_path):
+            with open(self.high_scores_path, 'w', encoding='utf-8') as file:
+                json.dump([], file, ensure_ascii=True, indent=2)
+            return []
+
+        try:
+            with open(self.high_scores_path, 'r', encoding='utf-8') as file:
+                data = json.load(file)
+        except (json.JSONDecodeError, OSError):
+            data = []
+
+        if not isinstance(data, list):
+            data = []
+
+        cleaned = []
+        for entry in data:
+            if not self._is_valid_score_entry(entry):
+                continue
+            cleaned.append({
+                'name': self._sanitize_player_name(entry.get('name', DEFAULT_PLAYER_NAME)),
+                'score': int(entry.get('score', 0) or 0)
+            })
+
+        cleaned.sort(key=lambda item: item['score'], reverse=True)
+        cleaned = cleaned[:MAX_HIGH_SCORES]
+        return cleaned
+
+    def save_high_scores(self):
+        os.makedirs(os.path.dirname(self.high_scores_path), exist_ok=True)
+        try:
+            with open(self.high_scores_path, 'w', encoding='utf-8') as file:
+                json.dump(self.high_scores[:MAX_HIGH_SCORES], file, ensure_ascii=True, indent=2)
+        except OSError:
+            # Ignore persistence errors at runtime to avoid breaking gameplay.
+            return
+
+    def update_high_scores(self, player_name, score):
+        safe_name = self._sanitize_player_name(player_name)
+        safe_score = max(0, int(score or 0))
+
+        existing = next((entry for entry in self.high_scores if entry['name'] == safe_name), None)
+        if existing:
+            existing['score'] = max(existing['score'], safe_score)
+        else:
+            self.high_scores.append({'name': safe_name, 'score': safe_score})
+
+        self.high_scores.sort(key=lambda item: item['score'], reverse=True)
+        self.high_scores = self.high_scores[:MAX_HIGH_SCORES]
+        self.save_high_scores()
+
+    def _load_levels_for_difficulty(self, difficulty):
+        levels = self.levels_data.get(difficulty)
+        if levels is not None:
+            return levels
+
+        fallback = self.levels_data.get('normal')
+        if fallback is not None:
+            return fallback
+
+        return next(iter(self.levels_data.values()), [])
+
+    def set_difficulty(self, difficulty):
+        difficulty = (difficulty or 'normal').lower()
+        if difficulty not in getattr(self, 'levels_data', {}):
+            difficulty = 'normal'
+
+        self.difficulty = difficulty
+        if hasattr(self, 'levels_data'):
+            self.levels = self._load_levels_for_difficulty(difficulty)
+        self.update_difficulty_link()
+
+    def cycle_difficulty(self):
+        current_index = DIFFICULTY_ORDER.index(self.difficulty) if self.difficulty in DIFFICULTY_ORDER else 1
+        next_index = (current_index + 1) % len(DIFFICULTY_ORDER)
+        self.set_difficulty(DIFFICULTY_ORDER[next_index])
+        self.restart_game()
+
+    def difficulty_link_text(self):
+        return f"difficulty: {self.difficulty} (c)"
+
+    def update_difficulty_link(self):
+        stage = getattr(self, 'stage', None)
+        if stage and stage.hud and 'levelCreatorLink' in stage.hud._items:
+            stage.hud.levelCreatorLink = self.difficulty_link_text()
+
+    def reset_game_state(self, preserve_stage=False):
+        self.level_index = 0
+        self.max_score = 0
+        self.time_paused = 0
+        self.is_paused = False
+        self.active_sounds = []
+        self.state = STATE_READY
+        self.is_game_over = False
+        self.wave_ending = False
+        self.quacking_sound_id = None
+        self.level = None
+        if not preserve_stage:
+            self.stage = None
+        self.ducks_missed = 0
+        self.ducks_shot = 0
+        self.bullets = 0
+        self.score = 0
+        self.wave = 0
+        self.game_status = ''
+        self.wave_start_time = 0
+        self.pause_start_time = 0
+        self.ducks_shot_this_wave = 0
+        self.bg_color = BLUE_SKY_COLOR
+        self.lives = MAX_LIVES
+        sound.mute(self.is_muted)
+
+    def restart_game(self):
+        for snd in list(self.active_sounds):
+            sound.stop(snd)
+
+        self.reset_game_state()
+        self.set_difficulty(self.difficulty)
+        if self.surface:
+            self.load(self.surface)
 
     @property
     def ducks_missed(self): return self.ducks_missed_val
@@ -84,6 +386,22 @@ class Game:
                     'max': 80
                 })
             self.stage.hud.bullets = val
+
+    @property
+    def lives(self): return self.lives_val
+    @lives.setter
+    def lives(self, val):
+        self.lives_val = max(0, val)
+        if self.stage and self.stage.hud:
+            if 'lives' not in self.stage.hud._items:
+                self.stage.hud.create_texture_based_counter('lives', {
+                    'texture': 'hud/hearts/full.png',
+                    'emptyTexture': 'hud/hearts/empty.png',
+                    'location': Stage.lives_box_location(),
+                    'max': MAX_LIVES,
+                    'iconScale': 0.12
+                })
+            self.stage.hud.lives = self.lives_val
 
     @property
     def score(self): return self.score_val
@@ -132,13 +450,18 @@ class Game:
     def load(self, surface):
         self.surface = surface
         self.stage = Stage({'spritesheet': self.spritesheet})
+        self.stage.hud.bind_game(self)
         
         self.add_fullscreen_link()
         self.add_mute_link()
         self.add_pause_link()
         self.add_link_to_level_creator()
-        
-        self.start_level()
+        self.lives = self.lives_val
+
+        self._initialize_ui_fonts()
+        self._panel_surface = self._make_panel_surface(700, 440)
+        self._refresh_credits_display()
+        self._prepare_menu()
 
     def add_fullscreen_link(self):
         self.stage.hud.create_text_box('fullscreenLink', {
@@ -146,7 +469,7 @@ class Game:
             'location': Stage.fullscreen_link_box_location(),
             'anchor': (1, 1)
         })
-        self.stage.hud.fullscreenLink = 'fullscreen (f)'
+        self.stage.hud.fullscreenLink = 'unfullscreen (f)' if self.is_fullscreen else 'fullscreen (f)'
 
     def add_mute_link(self):
         self.stage.hud.create_text_box('muteLink', {
@@ -154,7 +477,7 @@ class Game:
             'location': Stage.mute_link_box_location(),
             'anchor': (1, 1)
         })
-        self.stage.hud.muteLink = 'mute (m)'
+        self.stage.hud.muteLink = 'unmute (m)' if self.is_muted else 'mute (m)'
 
     def add_pause_link(self):
         self.stage.hud.create_text_box('pauseLink', {
@@ -162,7 +485,7 @@ class Game:
             'location': Stage.pause_link_box_location(),
             'anchor': (1, 1)
         })
-        self.stage.hud.pauseLink = 'pause (p)'
+        self.stage.hud.pauseLink = 'unpause (p)' if self.is_paused else 'pause (p)'
 
     def add_link_to_level_creator(self):
         self.stage.hud.create_text_box('levelCreatorLink', {
@@ -170,17 +493,70 @@ class Game:
             'location': Stage.level_creator_link_box_location(),
             'anchor': (1, 1)
         })
-        self.stage.hud.levelCreatorLink = 'level creator (c)'
+        self.stage.hud.levelCreatorLink = self.difficulty_link_text()
 
-    def handle_keydown(self, key):
+    def handle_keydown(self, key_or_event):
+        event = key_or_event if hasattr(key_or_event, 'key') else None
+        key = event.key if event else key_or_event
+
+        if self.state == STATE_MENU:
+            self.handle_menu_keydown(event, key)
+            return
+
+        if self.state == STATE_GAME_OVER:
+            self.handle_game_over_keydown(key)
+            return
+
+        if self.state == STATE_RANKING:
+            if key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_ESCAPE):
+                self._prepare_menu()
+            return
+
         if key == pygame.K_p:
             self.pause()
         elif key == pygame.K_m:
             self.mute()
         elif key == pygame.K_c:
-            pass # Level creator not in python
+            self.cycle_difficulty()
         elif key == pygame.K_f:
             self.fullscreen()
+
+    def handle_menu_keydown(self, event, key):
+        if key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+            self._start_gameplay_from_menu()
+            return
+
+        if key == pygame.K_c:
+            self.set_difficulty(DIFFICULTY_ORDER[(DIFFICULTY_ORDER.index(self.difficulty) + 1) % len(DIFFICULTY_ORDER)])
+            return
+
+        if key == pygame.K_F2:
+            self.add_credits()
+            return
+
+        if key == pygame.K_F3:
+            self.toggle_demo_mode()
+            return
+
+        if key == pygame.K_BACKSPACE:
+            self._player_name_input = self._player_name_input[:-1]
+            return
+
+        if event and getattr(event, 'unicode', ''):
+            candidate = event.unicode
+            if candidate.isprintable() and not candidate.isspace() and len(self._player_name_input) < 12:
+                self._player_name_input += candidate
+
+    def handle_game_over_keydown(self, key):
+        if key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+            if self.can_continue_after_game_over():
+                self.continue_after_game_over()
+            else:
+                self.finish_run_and_return_to_menu()
+            return
+
+        if key == pygame.K_ESCAPE:
+            self.finish_run_and_return_to_menu()
 
     def fullscreen(self):
         self.is_fullscreen = not self.is_fullscreen
@@ -211,6 +587,8 @@ class Game:
         sound.mute(self.is_muted)
 
     def start_level(self):
+        self.state = STATE_PLAYING
+        self.is_game_over = False
         self.level = self.levels[self.level_index]
         self.max_score += self.level['waves'] * self.level['ducks'] * self.level['pointsPerDuck']
         self.ducks_shot = 0
@@ -225,6 +603,7 @@ class Game:
         self.stage.pre_level_animation(on_pre_level_complete)
 
     def start_wave(self):
+        self.state = STATE_PLAYING
         self.quacking_sound_id = sound.play('quacking', loop=-1)
         if self.quacking_sound_id and self.quacking_sound_id not in self.active_sounds:
             self.active_sounds.append(self.quacking_sound_id)
@@ -247,12 +626,17 @@ class Game:
         if self.stage.ducks_alive():
             self.ducks_missed += self.level['ducks'] - self.ducks_shot_this_wave
             self.bg_color = PINK_SKY_COLOR
+            self.lives -= 1
             self.stage.fly_away(self.go_to_next_wave)
         else:
             self.stage.clean_up_ducks()
             self.go_to_next_wave()
 
     def go_to_next_wave(self):
+        if self.lives <= 0:
+            self.game_over()
+            return
+
         self.bg_color = BLUE_SKY_COLOR
         if self.level['waves'] == self.wave:
             self.end_level()
@@ -281,7 +665,7 @@ class Game:
     def go_to_next_level(self):
         self.level_index += 1
         if not self.level_won():
-            self.loss()
+            self.game_over()
         elif self.level_index < len(self.levels):
             self.start_level()
         else:
@@ -291,16 +675,33 @@ class Game:
         return self.ducks_shot > SUCCESS_RATIO * self.level['ducks'] * self.level['waves']
 
     def win(self):
+        self.state = STATE_WIN
         snd_id = sound.play('champ')
         if snd_id: self.active_sounds.append(snd_id)
         self.game_status = 'You Win!'
         self.show_replay(self.get_score_message())
 
     def loss(self):
+        self.state = STATE_LOSS
         snd_id = sound.play('loserSound')
         if snd_id: self.active_sounds.append(snd_id)
         self.game_status = 'You Lose!'
         self.show_replay(self.get_score_message())
+
+    def game_over(self):
+        if self.is_game_over:
+            return
+
+        self.state = STATE_GAME_OVER
+        self.is_game_over = True
+        snd_id = sound.play('loserSound')
+        if snd_id: self.active_sounds.append(snd_id)
+        self.game_status = 'Game Over'
+        if self.can_continue_after_game_over():
+            self._set_game_over_prompt('Continue? (1 credit) ENTER=Yes ESC=Menu')
+        else:
+            self._set_game_over_prompt('No credits left. Returning to menu...')
+            self.finish_run_and_return_to_menu()
 
     def get_score_message(self):
         percentage = (self.score / self.max_score) * 100 if self.max_score > 0 else 0
@@ -318,6 +719,24 @@ class Game:
         self.stage.hud.replayButton = replay_text + ' Play Again?'
 
     def handle_click(self, click_point):
+        if self.state == STATE_MENU:
+            self._start_gameplay_from_menu()
+            return
+
+        if self.state == STATE_GAME_OVER:
+            if self.can_continue_after_game_over():
+                self.continue_after_game_over()
+            else:
+                self.finish_run_and_return_to_menu()
+            return
+
+        if self.state == STATE_RANKING:
+            self._prepare_menu()
+            return
+
+        if self.state != STATE_PLAYING and self.state != STATE_WIN and self.state != STATE_LOSS and self.state != STATE_GAME_OVER:
+            return
+
         if self.stage.clicked_pause_link(click_point):
             self.pause()
             return
@@ -326,6 +745,9 @@ class Game:
             return
         if self.stage.clicked_fullscreen_link(click_point):
             self.fullscreen()
+            return
+        if self.stage.clicked_level_creator_link(click_point):
+            self.cycle_difficulty()
             return
             
         has_replay = hasattr(self.stage.hud, '_items') and 'replayButton' in self.stage.hud._items
@@ -339,8 +761,7 @@ class Game:
             return
 
         if has_replay and self.stage.clicked_replay(click_point):
-            self.__init__({'spritesheet': self.spritesheet})
-            self.load(self.surface)
+            self.restart_game()
 
     def update_score(self, ducks_shot):
         self.ducks_shot += ducks_shot
@@ -348,13 +769,93 @@ class Game:
         self.score += ducks_shot * self.level['pointsPerDuck']
 
     def update(self, dt):
-        if not self.is_paused:
+        if not self.is_paused and self.state == STATE_PLAYING:
             self.stage.update(dt)
             if self.should_wave_end():
                 self.end_wave()
+
+    def _draw_centered_text(self, surface, text, font, color, center):
+        text_surface = font.render(text, True, color)
+        rect = text_surface.get_rect(center=center)
+        surface.blit(text_surface, rect)
+
+    def draw_menu(self):
+        if not self.surface:
+            return
+
+        width, height = self.surface.get_size()
+        panel = pygame.transform.smoothscale(self._panel_surface, (max(1, int(width * 0.84)), max(1, int(height * 0.74))))
+        panel_rect = panel.get_rect(center=(width // 2, height // 2))
+        self.surface.blit(panel, panel_rect)
+
+        title_y = panel_rect.top + 56
+        self._draw_centered_text(self.surface, 'Duck Hunt', self._menu_title_font, (255, 244, 170), (width // 2, title_y))
+        self._draw_centered_text(self.surface, f'Difficulty: {self.difficulty.upper()} (C)', self._menu_text_font, (230, 230, 230), (width // 2, title_y + 56))
+        self._draw_centered_text(self.surface, self._credits_text(), self._menu_text_font, (255, 255, 255), (width // 2, title_y + 84))
+        self._draw_centered_text(self.surface, f'Add Credits: F2 (+{CREDITS_RECHARGE_AMOUNT})  Demo Mode: F3 ({"ON" if self.demo_mode else "OFF"})', self._menu_text_font, (220, 220, 220), (width // 2, title_y + 114))
+
+        active_name = self._sanitize_player_name(self._player_name_input)
+        name_line = f'Player Name: {active_name}_'
+        self._draw_centered_text(self.surface, name_line, self._menu_text_font, (255, 255, 255), (width // 2, title_y + 148))
+
+        self._draw_centered_text(self.surface, 'Type name, then press ENTER to start', self._menu_text_font, (220, 220, 220), (width // 2, title_y + 182))
+        self._draw_centered_text(self.surface, 'Top 10 Ranking', self._menu_text_font, (255, 232, 120), (width // 2, title_y + 228))
+
+        ranking_lines = self._high_score_lines()
+        line_y = title_y + 260
+        for line in ranking_lines[:10]:
+            self._draw_centered_text(self.surface, line, self._menu_text_font, (245, 245, 245), (width // 2, line_y))
+            line_y += 28
+
+    def draw_game_over(self):
+        if not self.surface:
+            return
+
+        width, height = self.surface.get_size()
+        panel = pygame.transform.smoothscale(self._panel_surface, (max(1, int(width * 0.84)), max(1, int(height * 0.74))))
+        panel_rect = panel.get_rect(center=(width // 2, height // 2))
+        self.surface.blit(panel, panel_rect)
+
+        title_y = panel_rect.top + 56
+        self._draw_centered_text(self.surface, 'Game Over', self._menu_title_font, (255, 192, 120), (width // 2, title_y))
+        self._draw_centered_text(self.surface, f'{self.player_name}: {self.score}', self._menu_text_font, (255, 255, 255), (width // 2, title_y + 48))
+        self._draw_centered_text(self.surface, self._credits_text(), self._menu_text_font, (255, 255, 255), (width // 2, title_y + 86))
+
+        if self.can_continue_after_game_over():
+            self._draw_centered_text(self.surface, 'Continue? (1 credit)', self._menu_text_font, (255, 232, 120), (width // 2, title_y + 136))
+            self._draw_centered_text(self.surface, 'ENTER/click: continue  ESC: menu', self._menu_text_font, (220, 220, 220), (width // 2, title_y + 172))
+        else:
+            self._draw_centered_text(self.surface, 'No credits left. Press ENTER or click to menu', self._menu_text_font, (220, 220, 220), (width // 2, title_y + 150))
+
+    def draw_ranking(self):
+        if not self.surface:
+            return
+
+        width, height = self.surface.get_size()
+        panel = pygame.transform.smoothscale(self._panel_surface, (max(1, int(width * 0.84)), max(1, int(height * 0.74))))
+        panel_rect = panel.get_rect(center=(width // 2, height // 2))
+        self.surface.blit(panel, panel_rect)
+
+        title_y = panel_rect.top + 56
+        self._draw_centered_text(self.surface, 'Game Over', self._menu_title_font, (255, 192, 120), (width // 2, title_y))
+        self._draw_centered_text(self.surface, f'{self.player_name}: {self.score}', self._menu_text_font, (255, 255, 255), (width // 2, title_y + 48))
+        self._draw_centered_text(self.surface, 'Ranking', self._menu_text_font, (255, 232, 120), (width // 2, title_y + 96))
+
+        line_y = title_y + 134
+        for line in self._high_score_lines()[:10]:
+            self._draw_centered_text(self.surface, line, self._menu_text_font, (245, 245, 245), (width // 2, line_y))
+            line_y += 28
+
+        self._draw_centered_text(self.surface, 'Press ENTER or click to return to menu', self._menu_text_font, (220, 220, 220), (width // 2, panel_rect.bottom - 40))
 
     def draw(self):
         if self.surface:
             self.surface.fill(self.bg_color)
             if self.stage:
                 self.stage.draw(self.surface)
+            if self.state == STATE_MENU:
+                self.draw_menu()
+            elif self.state == STATE_GAME_OVER:
+                self.draw_game_over()
+            elif self.state == STATE_RANKING:
+                self.draw_ranking()

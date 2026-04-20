@@ -21,6 +21,7 @@ def main():
 
     # Load assets
     Assets.load('assets/sprites/sprites.json', 'assets/sprites/sprites.png')
+    Assets.load('assets/sprites/hearts.json', 'assets/sprites/hearts.png')
 
     game = Game({'spritesheet': 'assets/sprites/sprites.json'})
     game.load(screen)
@@ -39,7 +40,7 @@ def main():
                 if game.stage:
                     game.stage.scale_to_window(event.w, event.h)
             elif event.type == pygame.KEYDOWN:
-                game.handle_keydown(event.key)
+                game.handle_keydown(event)
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1: # Left click
                     game.handle_click(event.pos)
