@@ -21,6 +21,7 @@ def main():
 
     # Load assets
     Assets.load('assets/sprites/sprites.json', 'assets/sprites/sprites.png')
+    Assets.load('assets/sprites/hearts.json', 'assets/sprites/hearts.png')
 
     game = Game({'spritesheet': 'assets/sprites/sprites.json'})
     game.load(screen)

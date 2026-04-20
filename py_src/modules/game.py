@@ -8,28 +8,34 @@ BLUE_SKY_COLOR = (100, 176, 255)
 PINK_SKY_COLOR = (251, 180, 212)
 SUCCESS_RATIO = 0.6
 BOTTOM_LINK_STYLE = {'fontFamily': 'Arial', 'fontSize': '15px', 'fill': 'white'}
+DIFFICULTY_ORDER = ('easy', 'normal', 'hard')
+MAX_LIVES = 3
 
 class Game:
     def __init__(self, opts):
         self.spritesheet = opts.get('spritesheet')
+        self.difficulty = opts.get('difficulty', 'normal')
         self.level_index = 0
         self.max_score = 0
         self.time_paused = 0
         self.is_muted = False
         self.is_paused = False
         self.active_sounds = []
+        self.state = 'READY'
+        self.is_game_over = False
 
         self.wave_ending = False
         self.quacking_sound_id = None
         
         with open('data/levels.json', 'r') as f:
-            levels_data = json.load(f)
-        self.levels = levels_data['normal']
+            self.levels_data = json.load(f)
+        self.set_difficulty(self.difficulty)
         
         self.ducks_missed_val = 0
         self.ducks_shot_val = 0
         self.bullet_val = 0
         self.score_val = 0
+        self.lives_val = 3
         self.wave_val = 0
         self.game_status_val = ""
         self.level = None
@@ -39,6 +45,76 @@ class Game:
         self.ducks_shot_this_wave = 0
         self.is_fullscreen = False
         self.bg_color = BLUE_SKY_COLOR
+        self.lives = MAX_LIVES
+
+    def _load_levels_for_difficulty(self, difficulty):
+        levels = self.levels_data.get(difficulty)
+        if levels is not None:
+            return levels
+
+        fallback = self.levels_data.get('normal')
+        if fallback is not None:
+            return fallback
+
+        return next(iter(self.levels_data.values()), [])
+
+    def set_difficulty(self, difficulty):
+        difficulty = (difficulty or 'normal').lower()
+        if difficulty not in getattr(self, 'levels_data', {}):
+            difficulty = 'normal'
+
+        self.difficulty = difficulty
+        if hasattr(self, 'levels_data'):
+            self.levels = self._load_levels_for_difficulty(difficulty)
+        self.update_difficulty_link()
+
+    def cycle_difficulty(self):
+        current_index = DIFFICULTY_ORDER.index(self.difficulty) if self.difficulty in DIFFICULTY_ORDER else 1
+        next_index = (current_index + 1) % len(DIFFICULTY_ORDER)
+        self.set_difficulty(DIFFICULTY_ORDER[next_index])
+        self.restart_game()
+
+    def difficulty_link_text(self):
+        return f"difficulty: {self.difficulty} (c)"
+
+    def update_difficulty_link(self):
+        stage = getattr(self, 'stage', None)
+        if stage and stage.hud and 'levelCreatorLink' in stage.hud._items:
+            stage.hud.levelCreatorLink = self.difficulty_link_text()
+
+    def reset_game_state(self):
+        self.level_index = 0
+        self.max_score = 0
+        self.time_paused = 0
+        self.is_paused = False
+        self.active_sounds = []
+        self.state = 'READY'
+        self.is_game_over = False
+        self.wave_ending = False
+        self.quacking_sound_id = None
+        self.level = None
+        self.stage = None
+        self.ducks_missed = 0
+        self.ducks_shot = 0
+        self.bullets = 0
+        self.score = 0
+        self.wave = 0
+        self.game_status = ''
+        self.wave_start_time = 0
+        self.pause_start_time = 0
+        self.ducks_shot_this_wave = 0
+        self.bg_color = BLUE_SKY_COLOR
+        self.lives = MAX_LIVES
+        sound.mute(self.is_muted)
+
+    def restart_game(self):
+        for snd in list(self.active_sounds):
+            sound.stop(snd)
+
+        self.reset_game_state()
+        self.set_difficulty(self.difficulty)
+        if self.surface:
+            self.load(self.surface)
 
     @property
     def ducks_missed(self): return self.ducks_missed_val
@@ -84,6 +160,22 @@ class Game:
                     'max': 80
                 })
             self.stage.hud.bullets = val
+
+    @property
+    def lives(self): return self.lives_val
+    @lives.setter
+    def lives(self, val):
+        self.lives_val = max(0, val)
+        if self.stage and self.stage.hud:
+            if 'lives' not in self.stage.hud._items:
+                self.stage.hud.create_texture_based_counter('lives', {
+                    'texture': 'hud/hearts/full.png',
+                    'emptyTexture': 'hud/hearts/empty.png',
+                    'location': Stage.lives_box_location(),
+                    'max': MAX_LIVES,
+                    'iconScale': 0.12
+                })
+            self.stage.hud.lives = self.lives_val
 
     @property
     def score(self): return self.score_val
@@ -137,6 +229,7 @@ class Game:
         self.add_mute_link()
         self.add_pause_link()
         self.add_link_to_level_creator()
+        self.lives = self.lives_val
         
         self.start_level()
 
@@ -146,7 +239,7 @@ class Game:
             'location': Stage.fullscreen_link_box_location(),
             'anchor': (1, 1)
         })
-        self.stage.hud.fullscreenLink = 'fullscreen (f)'
+        self.stage.hud.fullscreenLink = 'unfullscreen (f)' if self.is_fullscreen else 'fullscreen (f)'
 
     def add_mute_link(self):
         self.stage.hud.create_text_box('muteLink', {
@@ -154,7 +247,7 @@ class Game:
             'location': Stage.mute_link_box_location(),
             'anchor': (1, 1)
         })
-        self.stage.hud.muteLink = 'mute (m)'
+        self.stage.hud.muteLink = 'unmute (m)' if self.is_muted else 'mute (m)'
 
     def add_pause_link(self):
         self.stage.hud.create_text_box('pauseLink', {
@@ -162,7 +255,7 @@ class Game:
             'location': Stage.pause_link_box_location(),
             'anchor': (1, 1)
         })
-        self.stage.hud.pauseLink = 'pause (p)'
+        self.stage.hud.pauseLink = 'unpause (p)' if self.is_paused else 'pause (p)'
 
     def add_link_to_level_creator(self):
         self.stage.hud.create_text_box('levelCreatorLink', {
@@ -170,7 +263,7 @@ class Game:
             'location': Stage.level_creator_link_box_location(),
             'anchor': (1, 1)
         })
-        self.stage.hud.levelCreatorLink = 'level creator (c)'
+        self.stage.hud.levelCreatorLink = self.difficulty_link_text()
 
     def handle_keydown(self, key):
         if key == pygame.K_p:
@@ -178,7 +271,7 @@ class Game:
         elif key == pygame.K_m:
             self.mute()
         elif key == pygame.K_c:
-            pass # Level creator not in python
+            self.cycle_difficulty()
         elif key == pygame.K_f:
             self.fullscreen()
 
@@ -211,6 +304,8 @@ class Game:
         sound.mute(self.is_muted)
 
     def start_level(self):
+        self.state = 'PLAYING'
+        self.is_game_over = False
         self.level = self.levels[self.level_index]
         self.max_score += self.level['waves'] * self.level['ducks'] * self.level['pointsPerDuck']
         self.ducks_shot = 0
@@ -225,6 +320,7 @@ class Game:
         self.stage.pre_level_animation(on_pre_level_complete)
 
     def start_wave(self):
+        self.state = 'PLAYING'
         self.quacking_sound_id = sound.play('quacking', loop=-1)
         if self.quacking_sound_id and self.quacking_sound_id not in self.active_sounds:
             self.active_sounds.append(self.quacking_sound_id)
@@ -247,12 +343,17 @@ class Game:
         if self.stage.ducks_alive():
             self.ducks_missed += self.level['ducks'] - self.ducks_shot_this_wave
             self.bg_color = PINK_SKY_COLOR
+            self.lives -= 1
             self.stage.fly_away(self.go_to_next_wave)
         else:
             self.stage.clean_up_ducks()
             self.go_to_next_wave()
 
     def go_to_next_wave(self):
+        if self.lives <= 0:
+            self.game_over()
+            return
+
         self.bg_color = BLUE_SKY_COLOR
         if self.level['waves'] == self.wave:
             self.end_level()
@@ -291,16 +392,29 @@ class Game:
         return self.ducks_shot > SUCCESS_RATIO * self.level['ducks'] * self.level['waves']
 
     def win(self):
+        self.state = 'WIN'
         snd_id = sound.play('champ')
         if snd_id: self.active_sounds.append(snd_id)
         self.game_status = 'You Win!'
         self.show_replay(self.get_score_message())
 
     def loss(self):
+        self.state = 'LOSS'
         snd_id = sound.play('loserSound')
         if snd_id: self.active_sounds.append(snd_id)
         self.game_status = 'You Lose!'
         self.show_replay(self.get_score_message())
+
+    def game_over(self):
+        if self.is_game_over:
+            return
+
+        self.state = 'GAME_OVER'
+        self.is_game_over = True
+        snd_id = sound.play('loserSound')
+        if snd_id: self.active_sounds.append(snd_id)
+        self.game_status = 'Game Over'
+        self.show_replay('Game Over.')
 
     def get_score_message(self):
         percentage = (self.score / self.max_score) * 100 if self.max_score > 0 else 0
@@ -327,6 +441,9 @@ class Game:
         if self.stage.clicked_fullscreen_link(click_point):
             self.fullscreen()
             return
+        if self.stage.clicked_level_creator_link(click_point):
+            self.cycle_difficulty()
+            return
             
         has_replay = hasattr(self.stage.hud, '_items') and 'replayButton' in self.stage.hud._items
             
@@ -339,8 +456,7 @@ class Game:
             return
 
         if has_replay and self.stage.clicked_replay(click_point):
-            self.__init__({'spritesheet': self.spritesheet})
-            self.load(self.surface)
+            self.restart_game()
 
     def update_score(self, ducks_shot):
         self.ducks_shot += ducks_shot
@@ -348,7 +464,7 @@ class Game:
         self.score += ducks_shot * self.level['pointsPerDuck']
 
     def update(self, dt):
-        if not self.is_paused:
+        if not self.is_paused and self.state == 'PLAYING':
             self.stage.update(dt)
             if self.should_wave_end():
                 self.end_wave()

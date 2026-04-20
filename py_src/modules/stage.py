@@ -4,6 +4,8 @@ from libs.assets import Assets
 from modules.dog import Dog
 from modules.duck import Duck
 from modules.hud import Hud
+from libs.random_generators.LinearCongruentialGenerator import LinearCongruentialGenerator
+rng = LinearCongruentialGenerator()
 
 MAX_X = 800
 MAX_Y = 600
@@ -17,6 +19,7 @@ DOG_POINTS = {
 }
 HUD_LOCATIONS = {
   'SCORE': (MAX_X - 10, 10),
+    'LIVES': (10, 42),
   'WAVE_STATUS': (MAX_X - 11, MAX_Y - 30),
   'LEVEL_CREATOR_LINK': (MAX_X - 11, MAX_Y - 10),
   'FULL_SCREEN_LINK': (MAX_X - 130, MAX_Y - 10),
@@ -57,6 +60,8 @@ class Stage:
 
     @staticmethod
     def score_box_location(): return HUD_LOCATIONS['SCORE']
+    @staticmethod
+    def lives_box_location(): return HUD_LOCATIONS['LIVES']
     @staticmethod
     def wave_status_box_location(): return HUD_LOCATIONS['WAVE_STATUS']
     @staticmethod
