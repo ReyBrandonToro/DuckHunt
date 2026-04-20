@@ -20,12 +20,14 @@ DOG_POINTS = {
 HUD_LOCATIONS = {
   'SCORE': (MAX_X - 10, 10),
     'LIVES': (10, 42),
+    'CREDITS': (10, 74),
   'WAVE_STATUS': (MAX_X - 11, MAX_Y - 30),
   'LEVEL_CREATOR_LINK': (MAX_X - 11, MAX_Y - 10),
   'FULL_SCREEN_LINK': (MAX_X - 130, MAX_Y - 10),
   'PAUSE_LINK': (MAX_X - 318, MAX_Y - 10),
   'MUTE_LINK': (MAX_X - 236, MAX_Y - 10),
   'GAME_STATUS': (MAX_X / 2, MAX_Y * 0.45),
+    'GAME_OVER_PROMPT': (MAX_X / 2, MAX_Y * 0.57),
   'REPLAY_BUTTON': (MAX_X / 2, MAX_Y * 0.56),
   'BULLET_STATUS': (10, 10),
   'DEAD_DUCK_STATUS': (10, MAX_Y * 0.91),
@@ -63,9 +65,13 @@ class Stage:
     @staticmethod
     def lives_box_location(): return HUD_LOCATIONS['LIVES']
     @staticmethod
+    def credits_box_location(): return HUD_LOCATIONS['CREDITS']
+    @staticmethod
     def wave_status_box_location(): return HUD_LOCATIONS['WAVE_STATUS']
     @staticmethod
     def game_status_box_location(): return HUD_LOCATIONS['GAME_STATUS']
+    @staticmethod
+    def game_over_prompt_location(): return HUD_LOCATIONS['GAME_OVER_PROMPT']
     @staticmethod
     def pause_link_box_location(): return HUD_LOCATIONS['PAUSE_LINK']
     @staticmethod
