@@ -224,6 +224,7 @@ class Game:
     def load(self, surface):
         self.surface = surface
         self.stage = Stage({'spritesheet': self.spritesheet})
+        self.stage.hud.bind_game(self)
         
         self.add_fullscreen_link()
         self.add_mute_link()

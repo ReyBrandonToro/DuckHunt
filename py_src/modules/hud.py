@@ -1,6 +1,10 @@
 import pygame
 from libs.assets import Assets
 
+
+def _clamp(value, min_value, max_value):
+    return max(min_value, min(max_value, value))
+
 class TextBox:
     def __init__(self, text, style, location, anchor):
         self.text = text
@@ -144,10 +148,140 @@ class LivesCounter:
             if full_texture and i == self._loss_animation_index:
                 self._draw_loss_animation(surface, full_texture, x, y)
 
+
+class WaveProgressPanel:
+    def __init__(self):
+        self.game = None
+        self.wave_font = pygame.font.SysFont('arial', 18)
+        self.ducks_font = pygame.font.SysFont('arial', 15)
+        self.message_font = pygame.font.SysFont('arial', 24)
+
+        self.panel_width = 280
+        self.panel_height = 84
+        self.panel_margin_top = 8
+        self.corner_radius = 8
+
+        self.border_color = (255, 255, 255)
+        self.wave_color = (255, 255, 255)
+        self.ducks_color = (235, 235, 235)
+        self.bar_bg_color = (40, 40, 40)
+        self.bar_fill_color = (38, 184, 78)
+        self.percent_color = (255, 255, 255)
+        self.message_color = (255, 232, 120)
+
+        self.message_text = ''
+        self.message_until_ms = 0
+        self.message_duration_ms = 2000
+
+        self._initialized = False
+        self._last_wave = 0
+        self._last_level_index = 0
+
+    def bind_game(self, game):
+        self.game = game
+        self._initialized = False
+
+    def _read_progress(self):
+        if not self.game:
+            return None
+
+        level = getattr(self.game, 'level', None) or {}
+        wave = max(0, int(getattr(self.game, 'wave', 0) or 0))
+        total_waves = max(0, int(level.get('waves', 0) or 0))
+        ducks_hit = max(0, int(getattr(self.game, 'ducks_shot_this_wave', 0) or 0))
+        ducks_total = max(0, int(level.get('ducks', 0) or 0))
+        level_index = int(getattr(self.game, 'level_index', 0) or 0)
+
+        return {
+            'wave': wave,
+            'total_waves': total_waves,
+            'ducks_hit': ducks_hit,
+            'ducks_total': ducks_total,
+            'level_index': level_index,
+        }
+
+    def _update_message(self, progress):
+        now_ms = pygame.time.get_ticks()
+
+        if not self._initialized:
+            self._last_wave = progress['wave']
+            self._last_level_index = progress['level_index']
+            self._initialized = True
+            return
+
+        if progress['level_index'] > self._last_level_index:
+            self.message_text = 'Level Complete!'
+            self.message_until_ms = now_ms + self.message_duration_ms
+        elif progress['wave'] > self._last_wave and self._last_wave > 0:
+            self.message_text = 'Wave Complete!'
+            self.message_until_ms = now_ms + self.message_duration_ms
+
+        self._last_wave = progress['wave']
+        self._last_level_index = progress['level_index']
+
+    def draw(self, surface, scale_x=1.0, scale_y=1.0):
+        progress = self._read_progress()
+        if not progress:
+            return
+
+        self._update_message(progress)
+
+        wave_text = f"Wave {progress['wave']} / {progress['total_waves']}"
+        ducks_text = f"Ducks: {progress['ducks_hit']} / {progress['ducks_total']}"
+
+        ratio = 0.0
+        if progress['ducks_total'] > 0:
+            ratio = _clamp(progress['ducks_hit'] / progress['ducks_total'], 0.0, 1.0)
+        percent = int(round(ratio * 100))
+
+        wave_surface = self.wave_font.render(wave_text, True, self.wave_color)
+        ducks_surface = self.ducks_font.render(ducks_text, True, self.ducks_color)
+        percent_surface = self.ducks_font.render(f"{percent}%", True, self.percent_color)
+
+        center_x = int(400 * scale_x)
+        panel_width = max(1, int(self.panel_width * scale_x))
+        panel_height = max(1, int(self.panel_height * scale_y))
+        panel_x = center_x - (panel_width // 2)
+        panel_y = int(self.panel_margin_top * scale_y)
+
+        wave_rect = wave_surface.get_rect(center=(center_x, panel_y + int(18 * scale_y)))
+        ducks_rect = ducks_surface.get_rect(center=(center_x, panel_y + int(40 * scale_y)))
+        surface.blit(wave_surface, wave_rect)
+        surface.blit(ducks_surface, ducks_rect)
+
+        bar_width = max(1, int(190 * scale_x))
+        bar_height = max(1, int(14 * scale_y))
+        bar_x = center_x - (bar_width // 2)
+        bar_y = panel_y + int(58 * scale_y)
+
+        bg_rect = pygame.Rect(bar_x, bar_y, bar_width, bar_height)
+        fill_width = int((bar_width - 2) * ratio)
+        fill_rect = pygame.Rect(bar_x + 1, bar_y + 1, max(0, fill_width), max(1, bar_height - 2))
+
+        pygame.draw.rect(surface, self.bar_bg_color, bg_rect, border_radius=4)
+        if fill_rect.width > 0:
+            pygame.draw.rect(surface, self.bar_fill_color, fill_rect, border_radius=4)
+        pygame.draw.rect(surface, self.border_color, bg_rect, width=1, border_radius=4)
+
+        percent_rect = percent_surface.get_rect(midleft=(bar_x + bar_width + int(8 * scale_x), bar_y + (bar_height // 2)))
+        surface.blit(percent_surface, percent_rect)
+
+        now_ms = pygame.time.get_ticks()
+        if self.message_text and now_ms <= self.message_until_ms:
+            message_surface = self.message_font.render(self.message_text, True, self.message_color)
+            message_rect = message_surface.get_rect(center=(center_x, panel_y + panel_height + int(18 * scale_y)))
+            surface.blit(message_surface, message_rect)
+
 class Hud:
     def __init__(self):
         self._items = {}
         self._values = {}
+        self._game = None
+        self._wave_progress_panel = WaveProgressPanel()
+
+    def bind_game(self, game):
+        self._game = game
+        self._wave_progress_panel.bind_game(game)
 
     def create_text_box(self, name, opts=None):
         if opts is None: opts = {}
@@ -179,7 +313,7 @@ class Hud:
         raise AttributeError(f"'Hud' object has no attribute '{name}'")
 
     def __setattr__(self, name, value):
-        if name in ['_items', '_values']:
+        if name in ['_items', '_values', '_game', '_wave_progress_panel']:
             super().__setattr__(name, value)
         elif hasattr(self, '_items') and name in self._items:
             self._values[name] = value
@@ -193,3 +327,4 @@ class Hud:
     def draw(self, surface, scale_x=1.0, scale_y=1.0):
         for item in self._items.values():
             item.draw(surface, scale_x, scale_y)
+        self._wave_progress_panel.draw(surface, scale_x, scale_y)
