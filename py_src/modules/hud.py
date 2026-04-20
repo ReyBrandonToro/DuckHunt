@@ -327,4 +327,6 @@ class Hud:
     def draw(self, surface, scale_x=1.0, scale_y=1.0):
         for item in self._items.values():
             item.draw(surface, scale_x, scale_y)
-        self._wave_progress_panel.draw(surface, scale_x, scale_y)
+        game = getattr(self, '_game', None)
+        if game is not None and getattr(game, 'state', None) == 'PLAYING':
+            self._wave_progress_panel.draw(surface, scale_x, scale_y)
