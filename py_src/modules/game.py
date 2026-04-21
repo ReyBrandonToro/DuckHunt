@@ -115,6 +115,7 @@ class Game:
         self._player_name_input = self.player_name if self.player_name != DEFAULT_PLAYER_NAME else ''
         self._clear_game_over_prompt()
         self._refresh_credits_display()
+        sound.play_music("It's Showtime!.mp3", loop=-1)
 
     def _start_gameplay_from_menu(self):
         self.player_name = self._sanitize_player_name(self._player_name_input)
@@ -126,6 +127,7 @@ class Game:
         self.add_link_to_level_creator()
         self.lives = MAX_LIVES
         self._clear_game_over_prompt()
+        sound.play_music("DeathByGlamour.MP3", loop=-1)
         self.start_level()
 
     def _credits_text(self):
