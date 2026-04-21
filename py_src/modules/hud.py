@@ -243,10 +243,10 @@ class WaveProgressPanel:
             return
 
         if progress['level_index'] > self._last_level_index:
-            self.message_text = 'LEVEL COMPLETE!'
+            self.message_text = '¡NIVEL COMPLETADO!'
             self.message_until_ms = now_ms + self.message_duration_ms
         elif progress['wave'] > self._last_wave and self._last_wave > 0:
-            self.message_text = 'WAVE CLEAR!'
+            self.message_text = '¡OLEADA COMPLETADA!'
             self.message_until_ms = now_ms + self.message_duration_ms
 
         self._last_wave = progress['wave']
@@ -259,8 +259,8 @@ class WaveProgressPanel:
 
         self._update_message(progress)
 
-        wave_text = f"WAVE {progress['wave']} / {progress['total_waves']}"
-        ducks_text = f"DUCKS: {progress['ducks_hit']} / {progress['ducks_total']}"
+        wave_text = f"OLEADA {progress['wave']} / {progress['total_waves']}"
+        ducks_text = f"PATOS: {progress['ducks_hit']} / {progress['ducks_total']}"
 
         ratio = 0.0
         if progress['ducks_total'] > 0:

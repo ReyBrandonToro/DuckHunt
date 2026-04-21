@@ -14,7 +14,7 @@ MAX_LIVES = 3
 DEFAULT_CREDITS = 5
 CREDITS_RECHARGE_AMOUNT = 5
 MAX_HIGH_SCORES = 10
-DEFAULT_PLAYER_NAME = 'Player'
+DEFAULT_PLAYER_NAME = 'Jugador'
 
 STATE_MENU = 'MENU'
 STATE_PLAYING = 'PLAYING'
@@ -131,7 +131,7 @@ class Game:
         self.start_level()
 
     def _credits_text(self):
-        return 'Credits: \u221e' if self.demo_mode else f'Credits: {self.credits}'
+        return 'Créditos: \u221e' if self.demo_mode else f'Créditos: {self.credits}'
 
     def _refresh_credits_display(self):
         if not self.stage or not self.stage.hud:
@@ -201,7 +201,7 @@ class Game:
 
     def _high_score_lines(self):
         if not self.high_scores:
-            return ['No scores yet.']
+            return ['Sin puntuaciones aún.']
 
         lines = []
         for entry in self.high_scores[:MAX_HIGH_SCORES]:
@@ -302,7 +302,7 @@ class Game:
         self.restart_game()
 
     def difficulty_link_text(self):
-        return f"difficulty: {self.difficulty} (c)"
+        return f"dificultad: {self.difficulty} (c)"
 
     def update_difficulty_link(self):
         stage = getattr(self, 'stage', None)
@@ -432,7 +432,7 @@ class Game:
                     'anchor': (1, 1)
                 })
             if val is not None and val > 0:
-                self.stage.hud.waveStatus = f"wave {val} of {self.level['waves']}"
+                self.stage.hud.waveStatus = f"oleada {val} de {self.level['waves']}"
             else:
                 self.stage.hud.waveStatus = ""
 
@@ -471,7 +471,7 @@ class Game:
             'location': Stage.fullscreen_link_box_location(),
             'anchor': (1, 1)
         })
-        self.stage.hud.fullscreenLink = 'unfullscreen (f)' if self.is_fullscreen else 'fullscreen (f)'
+        self.stage.hud.fullscreenLink = 'pantalla chica (f)' if self.is_fullscreen else 'pantalla completa (f)'
 
     def add_mute_link(self):
         self.stage.hud.create_text_box('muteLink', {
@@ -479,7 +479,7 @@ class Game:
             'location': Stage.mute_link_box_location(),
             'anchor': (1, 1)
         })
-        self.stage.hud.muteLink = 'unmute (m)' if self.is_muted else 'mute (m)'
+        self.stage.hud.muteLink = 'activar sonido (m)' if self.is_muted else 'silenciar (m)'
 
     def add_pause_link(self):
         self.stage.hud.create_text_box('pauseLink', {
@@ -487,7 +487,7 @@ class Game:
             'location': Stage.pause_link_box_location(),
             'anchor': (1, 1)
         })
-        self.stage.hud.pauseLink = 'unpause (p)' if self.is_paused else 'pause (p)'
+        self.stage.hud.pauseLink = 'reanudar (p)' if self.is_paused else 'pausar (p)'
 
     def add_link_to_level_creator(self):
         self.stage.hud.create_text_box('levelCreatorLink', {
@@ -564,15 +564,15 @@ class Game:
     def fullscreen(self):
         self.is_fullscreen = not self.is_fullscreen
         if self.is_fullscreen:
-            self.stage.hud.fullscreenLink = 'unfullscreen (f)'
+            self.stage.hud.fullscreenLink = 'pantalla chica (f)'
             pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
         else:
-            self.stage.hud.fullscreenLink = 'fullscreen (f)'
+            self.stage.hud.fullscreenLink = 'pantalla completa (f)'
             pygame.display.set_mode((800, 600), pygame.RESIZABLE)
 
     def pause(self):
         self.is_paused = not self.is_paused
-        self.stage.hud.pauseLink = 'unpause (p)' if self.is_paused else 'pause (p)'
+        self.stage.hud.pauseLink = 'reanudar (p)' if self.is_paused else 'pausar (p)'
         if self.is_paused:
             self.pause_start_time = time.time()
             self.stage.pause()
@@ -586,7 +586,7 @@ class Game:
 
     def mute(self):
         self.is_muted = not self.is_muted
-        self.stage.hud.muteLink = 'unmute (m)' if self.is_muted else 'mute (m)'
+        self.stage.hud.muteLink = 'activar sonido (m)' if self.is_muted else 'silenciar (m)'
         sound.mute(self.is_muted)
 
     def start_level(self):
@@ -685,14 +685,14 @@ class Game:
         self.state = STATE_WIN
         #snd_id = sound.play('champ')
         #if snd_id: self.active_sounds.append(snd_id)
-        self.game_status = 'You Win!'
+        self.game_status = '¡Ganaste!'
         self.show_replay(self.get_score_message())
 
     def loss(self):
         self.state = STATE_LOSS
         snd_id = sound.play('loserSound')
         if snd_id: self.active_sounds.append(snd_id)
-        self.game_status = 'You Lose!'
+        self.game_status = '¡Perdiste!'
         self.show_replay(self.get_score_message())
 
     def game_over(self):
@@ -703,27 +703,27 @@ class Game:
         self.is_game_over = True
         snd_id = sound.play('loserSound')
         if snd_id: self.active_sounds.append(snd_id)
-        self.game_status = 'Game Over'
+        self.game_status = 'Fin del Juego'
         if self.can_continue_after_game_over():
-            self._set_game_over_prompt('Continue? (1 credit) ENTER=Yes ESC=Menu')
+            self._set_game_over_prompt('¿Continuar? (1 crédito) ENTER=Sí ESC=Menú')
         else:
-            self._set_game_over_prompt('No credits left. Returning to menu...')
+            self._set_game_over_prompt('Sin créditos. Volviendo al menú...')
             self.finish_run_and_return_to_menu()
 
     def get_score_message(self):
         percentage = (self.score / self.max_score) * 100 if self.max_score > 0 else 0
-        if percentage == 100: return 'Flawless victory.'
-        if percentage < 100 and percentage > 95: return 'Close to perfection.'
-        if percentage <= 95 and percentage > 85: return 'Truly impressive score.'
-        if percentage <= 85 and percentage > 75: return 'Solid score.'
-        if percentage <= 75 and percentage > 63: return 'Participation award.'
-        return 'Yikes.'
+        if percentage == 100: return 'Victoria perfecta.'
+        if percentage < 100 and percentage > 95: return 'Casi perfecto.'
+        if percentage <= 95 and percentage > 85: return 'Puntuación impresionante.'
+        if percentage <= 85 and percentage > 75: return 'Puntuación sólida.'
+        if percentage <= 75 and percentage > 63: return 'Premio de participación.'
+        return 'Uy.'
 
     def show_replay(self, replay_text):
         self.stage.hud.create_text_box('replayButton', {
             'location': Stage.replay_button_location()
         })
-        self.stage.hud.replayButton = replay_text + ' Play Again?'
+        self.stage.hud.replayButton = replay_text + ' ¿Jugar de nuevo?'
 
     def handle_click(self, click_point):
         if self.state == STATE_MENU:
@@ -808,7 +808,7 @@ class Game:
 
         # 3. Subtitles
         info_y = title_y + 75
-        self._draw_centered_text(self.surface, f'DIFFICULTY: {self.difficulty.upper()} (C)', self._menu_text_font, (235, 235, 235), (width // 2, info_y))
+        self._draw_centered_text(self.surface, f'DIFICULTAD: {self.difficulty.upper()} (C)', self._menu_text_font, (235, 235, 235), (width // 2, info_y))
         self._draw_centered_text(self.surface, self._credits_text(), self._menu_text_font, (255, 255, 255), (width // 2, info_y + 35))
         
         # 4. Interactive Name Input
@@ -819,12 +819,12 @@ class Game:
         # Input Box
         pygame.draw.rect(self.surface, (240, 240, 245, 200), (width // 2 - 200, input_y - 25, 400, 50), border_radius=8)
         pygame.draw.rect(self.surface, (255, 255, 255, 255), (width // 2 - 200, input_y - 25, 400, 50), width=2, border_radius=8)
-        self._draw_centered_text(self.surface, f'PLAYER: {display_name}{cursor}', self._menu_text_font, (20, 25, 35), (width // 2, input_y))
-        self._draw_centered_text(self.surface, 'PRESS ENTER TO START', pygame.font.SysFont('arial', 16, bold=True), (220, 220, 220), (width // 2, input_y + 42))
+        self._draw_centered_text(self.surface, f'JUGADOR: {display_name}{cursor}', self._menu_text_font, (20, 25, 35), (width // 2, input_y))
+        self._draw_centered_text(self.surface, 'PRESIONA ENTER PARA INICIAR', pygame.font.SysFont('arial', 16, bold=True), (220, 220, 220), (width // 2, input_y + 42))
 
         # 5. Ranking Section
         ranking_y = input_y + 85
-        self._draw_centered_text(self.surface, 'TOP 10 RANKING', pygame.font.SysFont('arial', 22, bold=True), (255, 232, 120), (width // 2, ranking_y))
+        self._draw_centered_text(self.surface, 'TOP 10 MEJORES', pygame.font.SysFont('arial', 22, bold=True), (255, 232, 120), (width // 2, ranking_y))
         
         ranking_lines = self._high_score_lines()
         line_y = ranking_y + 35
@@ -849,26 +849,26 @@ class Game:
         self.surface.blit(panel, panel_rect)
 
         title_y = panel_rect.top + 60
-        self._draw_centered_text(self.surface, 'GAME OVER', pygame.font.SysFont('arial', 54, bold=True), (255, 90, 90), (width // 2, title_y))
-        self._draw_centered_text(self.surface, f'FINAL SCORE: {self.score}', self._menu_text_font, (255, 255, 255), (width // 2, title_y + 65))
+        self._draw_centered_text(self.surface, 'FIN DEL JUEGO', pygame.font.SysFont('arial', 54, bold=True), (255, 90, 90), (width // 2, title_y))
+        self._draw_centered_text(self.surface, f'PUNTUACIÓN FINAL: {self.score}', self._menu_text_font, (255, 255, 255), (width // 2, title_y + 65))
         self._draw_centered_text(self.surface, self._credits_text(), self._menu_text_font, (255, 255, 255), (width // 2, title_y + 100))
 
         prompt_y = title_y + 160
         if self.can_continue_after_game_over():
-            self._draw_centered_text(self.surface, 'CONTINUE?', pygame.font.SysFont('arial', 28, bold=True), (255, 215, 0), (width // 2, prompt_y))
-            self._draw_centered_text(self.surface, 'Uses 1 credit', pygame.font.SysFont('arial', 18), (210, 210, 210), (width // 2, prompt_y + 30))
+            self._draw_centered_text(self.surface, '¿CONTINUAR?', pygame.font.SysFont('arial', 28, bold=True), (255, 215, 0), (width // 2, prompt_y))
+            self._draw_centered_text(self.surface, 'Usa 1 crédito', pygame.font.SysFont('arial', 18), (210, 210, 210), (width // 2, prompt_y + 30))
             
             # Flashing interactive prompt
             hint_alpha = int(170 + 85 * abs(pygame.time.get_ticks() % 800 - 400) / 400)
             hint_font = pygame.font.SysFont('arial', 20, bold=True)
-            hint_surface = hint_font.render('PRESS ENTER TO CONTINUE', True, (255, 255, 255))
+            hint_surface = hint_font.render('PRESIONA ENTER PARA CONTINUAR', True, (255, 255, 255))
             hint_surface.set_alpha(hint_alpha)
             self.surface.blit(hint_surface, hint_surface.get_rect(center=(width // 2, prompt_y + 75)))
             
-            self._draw_centered_text(self.surface, 'PRESS ESC FOR MENU', pygame.font.SysFont('arial', 16), (170, 170, 170), (width // 2, prompt_y + 105))
+            self._draw_centered_text(self.surface, 'PRESIONA ESC PARA EL MENÚ', pygame.font.SysFont('arial', 16), (170, 170, 170), (width // 2, prompt_y + 105))
         else:
-            self._draw_centered_text(self.surface, 'OUT OF CREDITS', self._menu_text_font, (220, 60, 60), (width // 2, prompt_y + 20))
-            self._draw_centered_text(self.surface, 'PRESS ENTER TO RETURN TO MENU', pygame.font.SysFont('arial', 18), (210, 210, 210), (width // 2, prompt_y + 70))
+            self._draw_centered_text(self.surface, 'SIN CRÉDITOS', self._menu_text_font, (220, 60, 60), (width // 2, prompt_y + 20))
+            self._draw_centered_text(self.surface, 'PRESIONA ENTER PARA VOLVER AL MENÚ', pygame.font.SysFont('arial', 18), (210, 210, 210), (width // 2, prompt_y + 70))
 
     def draw_ranking(self):
         if not self.surface:
@@ -886,8 +886,8 @@ class Game:
         self.surface.blit(panel, panel_rect)
 
         title_y = panel_rect.top + 50
-        self._draw_centered_text(self.surface, 'HALL OF FAME', pygame.font.SysFont('arial', 42, bold=True), (255, 215, 0), (width // 2, title_y))
-        self._draw_centered_text(self.surface, f'YOUR SCORE: {self.score}', self._menu_text_font, (255, 255, 255), (width // 2, title_y + 55))
+        self._draw_centered_text(self.surface, 'SALÓN DE LA FAMA', pygame.font.SysFont('arial', 42, bold=True), (255, 215, 0), (width // 2, title_y))
+        self._draw_centered_text(self.surface, f'TU PUNTUACIÓN: {self.score}', self._menu_text_font, (255, 255, 255), (width // 2, title_y + 55))
         
         divider_y = title_y + 90
         pygame.draw.line(self.surface, (255, 255, 255, 90), (width // 2 - 220, divider_y), (width // 2 + 220, divider_y), width=2)
@@ -899,7 +899,7 @@ class Game:
             line_y += 30
 
         hint_color = (210, 210, 210) if (pygame.time.get_ticks() // 600) % 2 == 0 else (130, 130, 130)
-        self._draw_centered_text(self.surface, 'PRESS ENTER OR CLICK TO RETURN', pygame.font.SysFont('arial', 16, bold=True), hint_color, (width // 2, panel_rect.bottom - 45))
+        self._draw_centered_text(self.surface, 'PRESIONA ENTER O HAZ CLIC PARA VOLVER', pygame.font.SysFont('arial', 16, bold=True), hint_color, (width // 2, panel_rect.bottom - 45))
 
     def draw(self):
         if self.surface:
