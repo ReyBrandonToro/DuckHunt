@@ -679,8 +679,8 @@ class Game:
 
     def win(self):
         self.state = STATE_WIN
-        snd_id = sound.play('champ')
-        if snd_id: self.active_sounds.append(snd_id)
+        #snd_id = sound.play('champ')
+        #if snd_id: self.active_sounds.append(snd_id)
         self.game_status = 'You Win!'
         self.show_replay(self.get_score_message())
 

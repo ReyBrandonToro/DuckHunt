@@ -110,6 +110,11 @@ class Duck(Character):
         self.timeline.call(initial_shot)
 
         def dead_start():
+            r = rng.random()
+            if r < 0.80:
+                sound.play('quak')
+            else:
+                sound.play('DuckDeath')
             self.state = 'dead'
             
         def dead_complete():
