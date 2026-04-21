@@ -599,6 +599,10 @@ class Game:
         self.wave = 0
         self.game_status = self.level['title']
         
+        if self.level_index > 0:
+            snd_id = sound.play('ExperienceLevel')
+            if snd_id: self.active_sounds.append(snd_id)
+        
         def on_pre_level_complete():
             self.game_status = ''
             self.start_wave()

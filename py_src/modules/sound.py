@@ -14,7 +14,7 @@ class SoundManager:
         # Load individual audio files if available.
         # Howler in JS used audio sprite, but in Python it's easier if we use the loose MP3s.
         # I'll check src/assets/sounds/
-        sounds = ['barkDucks', 'champ', 'gunSound', 'laugh', 'loserSound', 'ohYeah', 'quacking', 'quak', 'sniff', 'thud', 'Cuack', 'DuckDeath']
+        sounds = ['barkDucks', 'champ', 'gunSound', 'laugh', 'loserSound', 'ohYeah', 'quacking', 'quak', 'sniff', 'thud', 'Cuack', 'DuckDeath', 'ExperienceLevel']
         for s in sounds:
             path = os.path.join(audio_dir, f"{s}.mp3")
             path_upper = os.path.join(audio_dir, f"{s}.MP3")
