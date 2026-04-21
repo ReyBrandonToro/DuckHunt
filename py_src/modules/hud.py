@@ -14,16 +14,32 @@ class TextBox:
         font_name = style.get('fontFamily', 'Arial').lower()
         font_size = int(style.get('fontSize', '18px').replace('px', ''))
         self.font = pygame.font.SysFont(font_name, font_size)
-        self.color = (255, 255, 255)
+        self.color = style.get('fill', (255, 255, 255))
+        self.has_shadow = style.get('shadow', True)
+        self.shadow_color = style.get('shadowColor', (20, 25, 35))
+        self.is_button = style.get('isButton', False)
         
     def draw(self, surface, scale_x=1.0, scale_y=1.0):
         if not self.text: return
+        
+        # Render main text
         text_surface = self.font.render(str(self.text), True, self.color)
         rect = text_surface.get_rect()
         
         x = int((self.location[0] - rect.width * self.anchor[0]) * scale_x)
         y = int((self.location[1] - rect.height * self.anchor[1]) * scale_y)
         
+        if self.is_button:
+            # Draw a button capsule background (Dark Navy/Slate instead of Black)
+            padding_x, padding_y = 14 * scale_x, 8 * scale_y
+            btn_rect = pygame.Rect(x - padding_x, y - padding_y, rect.width + padding_x * 2, rect.height + padding_y * 2)
+            pygame.draw.rect(surface, (25, 35, 50, 190), btn_rect, border_radius=int(12 * scale_x))
+            pygame.draw.rect(surface, (200, 210, 230, 150), btn_rect, width=2, border_radius=int(12 * scale_x))
+
+        if self.has_shadow:
+            shadow_surface = self.font.render(str(self.text), True, self.shadow_color)
+            surface.blit(shadow_surface, (x + 2, y + 2))
+            
         surface.blit(text_surface, (x, y))
 
 class TextureCounter:
@@ -54,6 +70,14 @@ class TextureCounter:
         width = draw_texture.get_width()
         height = draw_texture.get_height()
         
+        # Subtle semi-transparent panel for counters
+        if val > 0:
+            bg_width = (width * min(val, self.row_max if self.row_max else val)) + 12
+            bg_height = height + 8
+            bg_rect = pygame.Rect(int(self.location[0] * scale_x) - 6, int(self.location[1] * scale_y) - 4, bg_width, bg_height)
+            pygame.draw.rect(surface, (15, 20, 30, 140), bg_rect, border_radius=6)
+            pygame.draw.rect(surface, (255, 255, 255, 40), bg_rect, width=1, border_radius=6)
+
         for i in range(val):
             y_pos = 0
             x_pos_delta = i
@@ -111,7 +135,7 @@ class LivesCounter:
             return
 
         progress = elapsed_ms / self._loss_animation_duration_ms
-        pulse = 1.0 + (0.22 * progress)
+        pulse = 1.0 + (0.4 * progress)
         alpha = max(0, int(255 * (1.0 - progress)))
 
         anim_width = max(1, int(full_texture.get_width() * pulse))
@@ -135,6 +159,15 @@ class LivesCounter:
         current_lives = max(0, min(self.value, max_lives))
         icon_width = draw_texture.get_width()
 
+        # Semi-transparent backing for lives bar
+        bar_rect = pygame.Rect(int(self.location[0] * scale_x) - 6, int(self.location[1] * scale_y) - 4, 
+                               int(icon_width * max_lives * scale_x) + 12, int(draw_texture.get_height() * scale_y) + 8)
+                               
+        bar_surf = pygame.Surface((bar_rect.width, bar_rect.height), pygame.SRCALPHA)
+        pygame.draw.rect(bar_surf, (20, 30, 45, 140), bar_surf.get_rect(), border_radius=10)
+        pygame.draw.rect(bar_surf, (255, 255, 255, 60), bar_surf.get_rect(), width=1, border_radius=10)
+        surface.blit(bar_surf, bar_rect)
+
         for i in range(max_lives):
             x = int((self.location[0] + icon_width * i) * scale_x)
             y = int(self.location[1] * scale_y)
@@ -152,26 +185,26 @@ class LivesCounter:
 class WaveProgressPanel:
     def __init__(self):
         self.game = None
-        self.wave_font = pygame.font.SysFont('arial', 18)
-        self.ducks_font = pygame.font.SysFont('arial', 15)
-        self.message_font = pygame.font.SysFont('arial', 24)
+        self.wave_font = pygame.font.SysFont('arial', 20, bold=True)
+        self.ducks_font = pygame.font.SysFont('arial', 16)
+        self.message_font = pygame.font.SysFont('arial', 26, bold=True)
 
-        self.panel_width = 280
-        self.panel_height = 84
-        self.panel_margin_top = 8
-        self.corner_radius = 8
+        self.panel_width = 320
+        self.panel_height = 90
+        self.panel_margin_top = 10
+        self.corner_radius = 12
 
-        self.border_color = (255, 255, 255)
+        self.border_color = (255, 215, 0) # Gold
         self.wave_color = (255, 255, 255)
-        self.ducks_color = (235, 235, 235)
-        self.bar_bg_color = (40, 40, 40)
-        self.bar_fill_color = (38, 184, 78)
-        self.percent_color = (255, 255, 255)
-        self.message_color = (255, 232, 120)
+        self.ducks_color = (240, 240, 240)
+        self.bar_bg_color = (30, 40, 55)
+        self.bar_fill_color = (50, 205, 50) # Lime Green
+        self.percent_color = (255, 255, 0)
+        self.message_color = (255, 255, 255)
 
         self.message_text = ''
         self.message_until_ms = 0
-        self.message_duration_ms = 2000
+        self.message_duration_ms = 2500
 
         self._initialized = False
         self._last_wave = 0
@@ -210,10 +243,10 @@ class WaveProgressPanel:
             return
 
         if progress['level_index'] > self._last_level_index:
-            self.message_text = 'Level Complete!'
+            self.message_text = 'LEVEL COMPLETE!'
             self.message_until_ms = now_ms + self.message_duration_ms
         elif progress['wave'] > self._last_wave and self._last_wave > 0:
-            self.message_text = 'Wave Complete!'
+            self.message_text = 'WAVE CLEAR!'
             self.message_until_ms = now_ms + self.message_duration_ms
 
         self._last_wave = progress['wave']
@@ -221,55 +254,68 @@ class WaveProgressPanel:
 
     def draw(self, surface, scale_x=1.0, scale_y=1.0):
         progress = self._read_progress()
-        if not progress:
+        if not progress or progress['wave'] == 0:
             return
 
         self._update_message(progress)
 
-        wave_text = f"Wave {progress['wave']} / {progress['total_waves']}"
-        ducks_text = f"Ducks: {progress['ducks_hit']} / {progress['ducks_total']}"
+        wave_text = f"WAVE {progress['wave']} / {progress['total_waves']}"
+        ducks_text = f"DUCKS: {progress['ducks_hit']} / {progress['ducks_total']}"
 
         ratio = 0.0
         if progress['ducks_total'] > 0:
             ratio = _clamp(progress['ducks_hit'] / progress['ducks_total'], 0.0, 1.0)
         percent = int(round(ratio * 100))
 
+        center_x = int(400 * scale_x)
+        panel_y = int(self.panel_margin_top * scale_y)
+        
+        # Draw Glassy Minimalist Panel (Highly transparent navy-slate)
+        panel_rect = pygame.Rect(center_x - int(160 * scale_x), panel_y, int(320 * scale_x), int(80 * scale_y))
+        
+        panel_surf = pygame.Surface((panel_rect.width, panel_rect.height), pygame.SRCALPHA)
+        pygame.draw.rect(panel_surf, (20, 30, 45, 140), panel_surf.get_rect(), border_radius=12)
+        pygame.draw.rect(panel_surf, (255, 255, 255, 60), panel_surf.get_rect(), width=1, border_radius=12)
+        surface.blit(panel_surf, panel_rect)
+
         wave_surface = self.wave_font.render(wave_text, True, self.wave_color)
         ducks_surface = self.ducks_font.render(ducks_text, True, self.ducks_color)
         percent_surface = self.ducks_font.render(f"{percent}%", True, self.percent_color)
 
-        center_x = int(400 * scale_x)
-        panel_width = max(1, int(self.panel_width * scale_x))
-        panel_height = max(1, int(self.panel_height * scale_y))
-        panel_x = center_x - (panel_width // 2)
-        panel_y = int(self.panel_margin_top * scale_y)
-
-        wave_rect = wave_surface.get_rect(center=(center_x, panel_y + int(18 * scale_y)))
-        ducks_rect = ducks_surface.get_rect(center=(center_x, panel_y + int(40 * scale_y)))
+        wave_rect = wave_surface.get_rect(center=(center_x, panel_y + int(22 * scale_y)))
+        ducks_rect = ducks_surface.get_rect(center=(center_x, panel_y + int(45 * scale_y)))
         surface.blit(wave_surface, wave_rect)
         surface.blit(ducks_surface, ducks_rect)
 
-        bar_width = max(1, int(190 * scale_x))
-        bar_height = max(1, int(14 * scale_y))
+        bar_width = max(1, int(220 * scale_x))
+        bar_height = max(1, int(12 * scale_y))
         bar_x = center_x - (bar_width // 2)
-        bar_y = panel_y + int(58 * scale_y)
+        bar_y = panel_y + int(60 * scale_y)
 
         bg_rect = pygame.Rect(bar_x, bar_y, bar_width, bar_height)
         fill_width = int((bar_width - 2) * ratio)
         fill_rect = pygame.Rect(bar_x + 1, bar_y + 1, max(0, fill_width), max(1, bar_height - 2))
 
-        pygame.draw.rect(surface, self.bar_bg_color, bg_rect, border_radius=4)
+        pygame.draw.rect(surface, self.bar_bg_color, bg_rect, border_radius=6)
         if fill_rect.width > 0:
-            pygame.draw.rect(surface, self.bar_fill_color, fill_rect, border_radius=4)
-        pygame.draw.rect(surface, self.border_color, bg_rect, width=1, border_radius=4)
+            pygame.draw.rect(surface, self.bar_fill_color, fill_rect, border_radius=6)
+        pygame.draw.rect(surface, (210, 210, 220, 100), bg_rect, width=1, border_radius=6)
 
-        percent_rect = percent_surface.get_rect(midleft=(bar_x + bar_width + int(8 * scale_x), bar_y + (bar_height // 2)))
+        percent_rect = percent_surface.get_rect(midleft=(bar_x + bar_width + int(10 * scale_x), bar_y + (bar_height // 2)))
         surface.blit(percent_surface, percent_rect)
 
         now_ms = pygame.time.get_ticks()
         if self.message_text and now_ms <= self.message_until_ms:
+            # Pulsing effect for message
+            alpha = int(160 + 95 * abs(pygame.time.get_ticks() % 1000 - 500) / 500)
             message_surface = self.message_font.render(self.message_text, True, self.message_color)
-            message_rect = message_surface.get_rect(center=(center_x, panel_y + panel_height + int(18 * scale_y)))
+            message_surface.set_alpha(alpha)
+            message_rect = message_surface.get_rect(center=(center_x, panel_y + int(112 * scale_y)))
+            
+            # Shadow for message
+            shadow_surface = self.message_font.render(self.message_text, True, (25, 30, 40))
+            shadow_rect = shadow_surface.get_rect(center=(center_x + 2, panel_y + int(114 * scale_y)))
+            surface.blit(shadow_surface, shadow_rect)
             surface.blit(message_surface, message_rect)
 
 class Hud:

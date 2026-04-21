@@ -8,7 +8,7 @@ from modules.sound import sound
 BLUE_SKY_COLOR = (100, 176, 255)
 PINK_SKY_COLOR = (251, 180, 212)
 SUCCESS_RATIO = 0.6
-BOTTOM_LINK_STYLE = {'fontFamily': 'Arial', 'fontSize': '15px', 'fill': 'white'}
+BOTTOM_LINK_STYLE = {'fontFamily': 'Arial', 'fontSize': '15px', 'fill': 'white', 'isButton': True}
 DIFFICULTY_ORDER = ('easy', 'normal', 'hard')
 MAX_LIVES = 3
 DEFAULT_CREDITS = 5
@@ -528,6 +528,10 @@ class Game:
             self._start_gameplay_from_menu()
             return
 
+        if key == pygame.K_BACKSPACE:
+            self._player_name_input = self._player_name_input[:-1]
+            return
+
         if key == pygame.K_c:
             self.set_difficulty(DIFFICULTY_ORDER[(DIFFICULTY_ORDER.index(self.difficulty) + 1) % len(DIFFICULTY_ORDER)])
             return
@@ -540,14 +544,11 @@ class Game:
             self.toggle_demo_mode()
             return
 
-        if key == pygame.K_BACKSPACE:
-            self._player_name_input = self._player_name_input[:-1]
-            return
-
-        if event and getattr(event, 'unicode', ''):
-            candidate = event.unicode
-            if candidate.isprintable() and not candidate.isspace() and len(self._player_name_input) < 12:
-                self._player_name_input += candidate
+        # Capturar entrada de texto
+        if event and hasattr(event, 'unicode') and event.unicode:
+            # Permitir caracteres imprimibles (ASCII 32 en adelante)
+            if ord(event.unicode) >= 32 and len(self._player_name_input) < 12:
+                self._player_name_input += event.unicode
 
     def handle_game_over_keydown(self, key):
         if key in (pygame.K_RETURN, pygame.K_KP_ENTER):
@@ -722,7 +723,7 @@ class Game:
 
     def handle_click(self, click_point):
         if self.state == STATE_MENU:
-            self._start_gameplay_from_menu()
+            # Desactivamos el inicio por clic para permitir escribir el nombre sin accidentes
             return
 
         if self.state == STATE_GAME_OVER:
@@ -786,69 +787,115 @@ class Game:
             return
 
         width, height = self.surface.get_size()
-        panel = pygame.transform.smoothscale(self._panel_surface, (max(1, int(width * 0.84)), max(1, int(height * 0.74))))
+        
+        # 1. Glassy Panel Background
+        panel_w, panel_h = max(1, int(width * 0.88)), max(1, int(height * 0.82))
+        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        pygame.draw.rect(panel, (20, 25, 45, 215), (0, 0, panel_w, panel_h), border_radius=20)
+        pygame.draw.rect(panel, (255, 255, 255, 60), (0, 0, panel_w, panel_h), width=2, border_radius=20)
         panel_rect = panel.get_rect(center=(width // 2, height // 2))
         self.surface.blit(panel, panel_rect)
 
-        title_y = panel_rect.top + 56
-        self._draw_centered_text(self.surface, 'Duck Hunt', self._menu_title_font, (255, 244, 170), (width // 2, title_y))
-        self._draw_centered_text(self.surface, f'Difficulty: {self.difficulty.upper()} (C)', self._menu_text_font, (230, 230, 230), (width // 2, title_y + 56))
-        self._draw_centered_text(self.surface, self._credits_text(), self._menu_text_font, (255, 255, 255), (width // 2, title_y + 84))
-        self._draw_centered_text(self.surface, f'Add Credits: F2 (+{CREDITS_RECHARGE_AMOUNT})  Demo Mode: F3 ({"ON" if self.demo_mode else "OFF"})', self._menu_text_font, (220, 220, 220), (width // 2, title_y + 114))
+        # 2. Title
+        title_y = panel_rect.top + 60
+        title_font = pygame.font.SysFont('arial', 60, bold=True)
+        self._draw_centered_text(self.surface, 'DUCK HUNT', title_font, (15, 15, 25), (width // 2 + 4, title_y + 4))
+        self._draw_centered_text(self.surface, 'DUCK HUNT', title_font, (255, 215, 0), (width // 2, title_y))
 
-        active_name = self._sanitize_player_name(self._player_name_input)
-        name_line = f'Player Name: {active_name}_'
-        self._draw_centered_text(self.surface, name_line, self._menu_text_font, (255, 255, 255), (width // 2, title_y + 148))
+        # 3. Subtitles
+        info_y = title_y + 75
+        self._draw_centered_text(self.surface, f'DIFFICULTY: {self.difficulty.upper()} (C)', self._menu_text_font, (235, 235, 235), (width // 2, info_y))
+        self._draw_centered_text(self.surface, self._credits_text(), self._menu_text_font, (255, 255, 255), (width // 2, info_y + 35))
+        
+        # 4. Interactive Name Input
+        display_name = self._player_name_input if self._player_name_input else DEFAULT_PLAYER_NAME
+        input_y = info_y + 90
+        cursor = '_' if (pygame.time.get_ticks() // 500) % 2 == 0 else ' '
+        
+        # Input Box
+        pygame.draw.rect(self.surface, (240, 240, 245, 200), (width // 2 - 200, input_y - 25, 400, 50), border_radius=8)
+        pygame.draw.rect(self.surface, (255, 255, 255, 255), (width // 2 - 200, input_y - 25, 400, 50), width=2, border_radius=8)
+        self._draw_centered_text(self.surface, f'PLAYER: {display_name}{cursor}', self._menu_text_font, (20, 25, 35), (width // 2, input_y))
+        self._draw_centered_text(self.surface, 'PRESS ENTER TO START', pygame.font.SysFont('arial', 16, bold=True), (220, 220, 220), (width // 2, input_y + 42))
 
-        self._draw_centered_text(self.surface, 'Type name, then press ENTER to start', self._menu_text_font, (220, 220, 220), (width // 2, title_y + 182))
-        self._draw_centered_text(self.surface, 'Top 10 Ranking', self._menu_text_font, (255, 232, 120), (width // 2, title_y + 228))
-
+        # 5. Ranking Section
+        ranking_y = input_y + 85
+        self._draw_centered_text(self.surface, 'TOP 10 RANKING', pygame.font.SysFont('arial', 22, bold=True), (255, 232, 120), (width // 2, ranking_y))
+        
         ranking_lines = self._high_score_lines()
-        line_y = title_y + 260
-        for line in ranking_lines[:10]:
-            self._draw_centered_text(self.surface, line, self._menu_text_font, (245, 245, 245), (width // 2, line_y))
-            line_y += 28
+        line_y = ranking_y + 35
+        for i, line in enumerate(ranking_lines[:10]):
+            color = (250, 250, 250) if i % 2 == 0 else (210, 210, 210)
+            self._draw_centered_text(self.surface, f"{i+1}. {line}", pygame.font.SysFont('arial', 18), color, (width // 2, line_y))
+            line_y += 24
 
     def draw_game_over(self):
         if not self.surface:
             return
 
         width, height = self.surface.get_size()
-        panel = pygame.transform.smoothscale(self._panel_surface, (max(1, int(width * 0.84)), max(1, int(height * 0.74))))
+        panel_w = max(1, int(width * 0.82))
+        panel_h = max(1, int(height * 0.72))
+        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        # Deep Maroon/Burgundy for Game Over
+        pygame.draw.rect(panel, (55, 20, 20, 225), (0, 0, panel_w, panel_h), border_radius=20)
+        pygame.draw.rect(panel, (255, 120, 120, 90), (0, 0, panel_w, panel_h), width=2, border_radius=20)
+        
         panel_rect = panel.get_rect(center=(width // 2, height // 2))
         self.surface.blit(panel, panel_rect)
 
-        title_y = panel_rect.top + 56
-        self._draw_centered_text(self.surface, 'Game Over', self._menu_title_font, (255, 192, 120), (width // 2, title_y))
-        self._draw_centered_text(self.surface, f'{self.player_name}: {self.score}', self._menu_text_font, (255, 255, 255), (width // 2, title_y + 48))
-        self._draw_centered_text(self.surface, self._credits_text(), self._menu_text_font, (255, 255, 255), (width // 2, title_y + 86))
+        title_y = panel_rect.top + 60
+        self._draw_centered_text(self.surface, 'GAME OVER', pygame.font.SysFont('arial', 54, bold=True), (255, 90, 90), (width // 2, title_y))
+        self._draw_centered_text(self.surface, f'FINAL SCORE: {self.score}', self._menu_text_font, (255, 255, 255), (width // 2, title_y + 65))
+        self._draw_centered_text(self.surface, self._credits_text(), self._menu_text_font, (255, 255, 255), (width // 2, title_y + 100))
 
+        prompt_y = title_y + 160
         if self.can_continue_after_game_over():
-            self._draw_centered_text(self.surface, 'Continue? (1 credit)', self._menu_text_font, (255, 232, 120), (width // 2, title_y + 136))
-            self._draw_centered_text(self.surface, 'ENTER/click: continue  ESC: menu', self._menu_text_font, (220, 220, 220), (width // 2, title_y + 172))
+            self._draw_centered_text(self.surface, 'CONTINUE?', pygame.font.SysFont('arial', 28, bold=True), (255, 215, 0), (width // 2, prompt_y))
+            self._draw_centered_text(self.surface, 'Uses 1 credit', pygame.font.SysFont('arial', 18), (210, 210, 210), (width // 2, prompt_y + 30))
+            
+            # Flashing interactive prompt
+            hint_alpha = int(170 + 85 * abs(pygame.time.get_ticks() % 800 - 400) / 400)
+            hint_font = pygame.font.SysFont('arial', 20, bold=True)
+            hint_surface = hint_font.render('PRESS ENTER TO CONTINUE', True, (255, 255, 255))
+            hint_surface.set_alpha(hint_alpha)
+            self.surface.blit(hint_surface, hint_surface.get_rect(center=(width // 2, prompt_y + 75)))
+            
+            self._draw_centered_text(self.surface, 'PRESS ESC FOR MENU', pygame.font.SysFont('arial', 16), (170, 170, 170), (width // 2, prompt_y + 105))
         else:
-            self._draw_centered_text(self.surface, 'No credits left. Press ENTER or click to menu', self._menu_text_font, (220, 220, 220), (width // 2, title_y + 150))
+            self._draw_centered_text(self.surface, 'OUT OF CREDITS', self._menu_text_font, (220, 60, 60), (width // 2, prompt_y + 20))
+            self._draw_centered_text(self.surface, 'PRESS ENTER TO RETURN TO MENU', pygame.font.SysFont('arial', 18), (210, 210, 210), (width // 2, prompt_y + 70))
 
     def draw_ranking(self):
         if not self.surface:
             return
 
         width, height = self.surface.get_size()
-        panel = pygame.transform.smoothscale(self._panel_surface, (max(1, int(width * 0.84)), max(1, int(height * 0.74))))
+        panel_w = max(1, int(width * 0.84))
+        panel_h = max(1, int(height * 0.74))
+        panel = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        # Deep Navy for Hall of Fame
+        pygame.draw.rect(panel, (20, 30, 55, 220), (0, 0, panel_w, panel_h), border_radius=20)
+        pygame.draw.rect(panel, (255, 255, 255, 60), (0, 0, panel_w, panel_h), width=2, border_radius=20)
+        
         panel_rect = panel.get_rect(center=(width // 2, height // 2))
         self.surface.blit(panel, panel_rect)
 
-        title_y = panel_rect.top + 56
-        self._draw_centered_text(self.surface, 'Game Over', self._menu_title_font, (255, 192, 120), (width // 2, title_y))
-        self._draw_centered_text(self.surface, f'{self.player_name}: {self.score}', self._menu_text_font, (255, 255, 255), (width // 2, title_y + 48))
-        self._draw_centered_text(self.surface, 'Ranking', self._menu_text_font, (255, 232, 120), (width // 2, title_y + 96))
+        title_y = panel_rect.top + 50
+        self._draw_centered_text(self.surface, 'HALL OF FAME', pygame.font.SysFont('arial', 42, bold=True), (255, 215, 0), (width // 2, title_y))
+        self._draw_centered_text(self.surface, f'YOUR SCORE: {self.score}', self._menu_text_font, (255, 255, 255), (width // 2, title_y + 55))
+        
+        divider_y = title_y + 90
+        pygame.draw.line(self.surface, (255, 255, 255, 90), (width // 2 - 220, divider_y), (width // 2 + 220, divider_y), width=2)
 
-        line_y = title_y + 134
-        for line in self._high_score_lines()[:10]:
-            self._draw_centered_text(self.surface, line, self._menu_text_font, (245, 245, 245), (width // 2, line_y))
-            line_y += 28
+        line_y = divider_y + 35
+        for i, line in enumerate(self._high_score_lines()[:10]):
+            color = (250, 250, 250) if i % 2 == 0 else (190, 190, 190)
+            self._draw_centered_text(self.surface, f"{i+1}. {line}", pygame.font.SysFont('arial', 20), color, (width // 2, line_y))
+            line_y += 30
 
-        self._draw_centered_text(self.surface, 'Press ENTER or click to return to menu', self._menu_text_font, (220, 220, 220), (width // 2, panel_rect.bottom - 40))
+        hint_color = (210, 210, 210) if (pygame.time.get_ticks() // 600) % 2 == 0 else (130, 130, 130)
+        self._draw_centered_text(self.surface, 'PRESS ENTER OR CLICK TO RETURN', pygame.font.SysFont('arial', 16, bold=True), hint_color, (width // 2, panel_rect.bottom - 45))
 
     def draw(self):
         if self.surface:
