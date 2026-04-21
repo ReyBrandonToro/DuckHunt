@@ -8,6 +8,9 @@ from modules.sound import sound
 from modules.game import Game
 
 def main():
+    # Asegurarnos de que el directorio de trabajo es donde está main.py
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
     pygame.init()
     pygame.font.init()
     pygame.mixer.init()
